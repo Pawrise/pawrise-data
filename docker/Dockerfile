@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     postgresql-server-dev-15 \
     git \
+    clang-14 \
+    llvm-14 \
     && git clone --branch v0.6.0 https://github.com/pgvector/pgvector.git \
     && cd pgvector \
     && make \

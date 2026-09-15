@@ -98,8 +98,8 @@ def seed_database():
                         
                 conn.commit()
                 console.print(f"[bold green]Succès ![/bold green] {len(data_to_insert)} lignes insérées dans 'dog_metrics'.")
-                console.print(f"🐶 [bold]Collier A (Sain)[/bold]: {COLLAR_A}")
-                console.print(f"🚨 [bold]Collier B (Handoff test)[/bold]: {COLLAR_B}")
+                console.print(f"[bold]Collier A (Sain)[/bold]: {COLLAR_A}")
+                console.print(f"[bold]Collier B (Handoff test)[/bold]: {COLLAR_B}")
 
     except Exception as e:
         console.print(f"[bold red]Erreur de connexion ou d'insertion : {e}[/bold red]")

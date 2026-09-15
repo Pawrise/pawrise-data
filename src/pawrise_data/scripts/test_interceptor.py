@@ -71,10 +71,10 @@ def main():
                     
                     if decision == RoutingDecision.CRITICAL_HANDOFF:
                         decision_str = "[bold red blink]CRITICAL_HANDOFF[/bold red blink]"
-                        action_str = "🚨 [red]Blocage IA -> Alerte SMS Vétérinaire[/red]"
+                        action_str = "[red]Blocage IA -> Alerte SMS Vétérinaire[/red]"
                     else:
                         decision_str = "[bold green]NORMAL[/bold green]"
-                        action_str = "✅ [green]Autorisé -> Routage vers LangGraph (RAG)[/green]"
+                        action_str = "[green]Autorisé -> Routage vers LangGraph (RAG)[/green]"
                         
                     table.add_row(name, stats, decision_str, action_str)
 
