@@ -20,3 +20,6 @@ venv.bak/
 
 # Docker
 .dockerignore
+
+# Context
+CONTEXT.md
