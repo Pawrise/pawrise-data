@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  postgres:
+    build: 
+      context: ./docker
+      dockerfile: Dockerfile
+    container_name: pawrise-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER:-pawrise}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-pawrise123}
+      POSTGRES_DB: ${DB_NAME:-pawrise_care}
+    volumes:
+      - pawrise-db-data:/var/lib/postgresql/data
+      - ./docker/postgres:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+
+volumes:
+  pawrise-db-data:
