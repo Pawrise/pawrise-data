@@ -1,5 +1,6 @@
 from pawrise_data.domain.models import DogMetric, RoutingDecision
 
+
 class AnomalyDetector:
     """
     Service déterministe (Règles Métier) qui intercepte la donnée 

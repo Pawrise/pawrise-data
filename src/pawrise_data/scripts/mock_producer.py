@@ -1,7 +1,8 @@
-import os
 import json
+import os
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from confluent_kafka import Producer
 from rich.console import Console
 
@@ -24,15 +25,15 @@ def delivery_report(err, msg):
 
 def main():
     console.print(f"[bold cyan]Pawrise Care[/bold cyan] - Démarrage du Mock Producer vers Kafka ({KAFKA_BROKER_URL})")
-    
+
     conf = {'bootstrap.servers': KAFKA_BROKER_URL}
     producer = Producer(conf)
-    
+
     try:
         # Envoi de 3 données normales
         for i in range(3):
             metric_data = {
-                "recorded_at": datetime.now(timezone.utc).isoformat(),
+                "recorded_at": datetime.now(UTC).isoformat(),
                 "anonymous_collar_id": COLLAR_A,
                 "bpm": 85 + i,
                 "respiratory_rate": 20 + i,
@@ -43,13 +44,13 @@ def main():
                 value=json.dumps(metric_data).encode('utf-8'),
                 callback=delivery_report
             )
-            console.print(f"[dim]Envoyé: Métrique normale Collier A[/dim]")
+            console.print("[dim]Envoyé: Métrique normale Collier A[/dim]")
             producer.poll(0) # Déclenche les callbacks
             time.sleep(1)
-            
+
         # Envoi de 1 donnée critique (Urgence)
         critical_data = {
-            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "recorded_at": datetime.now(UTC).isoformat(),
             "anonymous_collar_id": COLLAR_B,
             "bpm": 180,
             "respiratory_rate": 60,
@@ -60,16 +61,16 @@ def main():
             value=json.dumps(critical_data).encode('utf-8'),
             callback=delivery_report
         )
-        console.print(f"[bold red]Envoyé: Métrique CRITIQUE Collier B[/bold red]")
+        console.print("[bold red]Envoyé: Métrique CRITIQUE Collier B[/bold red]")
         producer.poll(0)
-        
+
         # On attend que tout soit parti
         producer.flush()
         console.print("[green]Tous les messages ont été envoyés au tapis roulant ![/green]")
-        
+
     except KeyboardInterrupt:
         pass
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         console.print(f"[bold red]Erreur: {e}[/bold red]")
 
 if __name__ == "__main__":

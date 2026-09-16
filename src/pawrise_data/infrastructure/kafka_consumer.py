@@ -1,15 +1,14 @@
-import os
 import json
+import os
 import signal
 import time
-from uuid import UUID
-from datetime import datetime
+
 from confluent_kafka import Consumer, KafkaError
 from rich.console import Console
 
 from pawrise_data.domain.models import DogMetric, RoutingDecision
-from pawrise_data.services.anomaly_detector import AnomalyDetector
 from pawrise_data.infrastructure.db_repository import DatabaseRepository
+from pawrise_data.services.anomaly_detector import AnomalyDetector
 
 console = Console()
 
@@ -91,7 +90,7 @@ class MetricsConsumer:
                         self.db_repo.save_metric(metric)
                         console.print(f"[green]✅ Donnée normale stockée (Collier {metric.anonymous_collar_id}).[/green]")
                         
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     console.print(f"[yellow]⚠️ Colis malformé ignoré : {e}[/yellow]")
                     
         except KeyboardInterrupt:

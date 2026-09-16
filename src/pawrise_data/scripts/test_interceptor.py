@@ -1,7 +1,9 @@
 import os
+
 import psycopg
 from rich.console import Console
 from rich.table import Table
+
 from pawrise_data.domain.models import DogMetric, RoutingDecision
 from pawrise_data.services.anomaly_detector import AnomalyDetector
 
@@ -47,41 +49,40 @@ def main():
     console.print("\n[bold cyan]Pawrise Care - Test de l'Intercepteur de Red Flags[/bold cyan]\n")
     
     try:
-        with psycopg.connect(DSN) as conn:
-            with conn.cursor() as cur:
-                # Récupération des dernières données
-                metric_a = get_latest_metric(cur, COLLAR_A)
-                metric_b = get_latest_metric(cur, COLLAR_B)
+        with psycopg.connect(DSN) as conn, conn.cursor() as cur:
+            # Récupération des dernières données
+            metric_a = get_latest_metric(cur, COLLAR_A)
+            metric_b = get_latest_metric(cur, COLLAR_B)
+            
+            # Création d'une table Rich pour l'affichage
+            table = Table(title="Résultats de l'analyse en temps réel (Handoff vs IA)")
+            
+            table.add_column("Collier ID", justify="left", style="cyan", no_wrap=True)
+            table.add_column("Métrique (Dernier point)", justify="left", style="magenta")
+            table.add_column("Décision du Service", justify="center", style="bold")
+            table.add_column("Action Conséquente", justify="left")
+            
+            for metric, name in [(metric_a, "Collier A (Chien Sain)"), (metric_b, "Collier B (Cas d'urgence)")]:
                 
-                # Création d'une table Rich pour l'affichage
-                table = Table(title="Résultats de l'analyse en temps réel (Handoff vs IA)")
+                # 🚀 Appel de notre logique métier (Le "Garde-fou")
+                decision = AnomalyDetector.evaluate(metric)
                 
-                table.add_column("Collier ID", justify="left", style="cyan", no_wrap=True)
-                table.add_column("Métrique (Dernier point)", justify="left", style="magenta")
-                table.add_column("Décision du Service", justify="center", style="bold")
-                table.add_column("Action Conséquente", justify="left")
+                # Formatage des stats pour l'affichage
+                stats = f"BPM: {metric.bpm}, Resp: {metric.respiratory_rate}, Temp: {metric.temperature}°C"
                 
-                for metric, name in [(metric_a, "Collier A (Chien Sain)"), (metric_b, "Collier B (Cas d'urgence)")]:
+                if decision == RoutingDecision.CRITICAL_HANDOFF:
+                    decision_str = "[bold red blink]CRITICAL_HANDOFF[/bold red blink]"
+                    action_str = "[red]Blocage IA -> Alerte SMS Vétérinaire[/red]"
+                else:
+                    decision_str = "[bold green]NORMAL[/bold green]"
+                    action_str = "[green]Autorisé -> Routage vers LangGraph (RAG)[/green]"
                     
-                    # 🚀 Appel de notre logique métier (Le "Garde-fou")
-                    decision = AnomalyDetector.evaluate(metric)
-                    
-                    # Formatage des stats pour l'affichage
-                    stats = f"BPM: {metric.bpm}, Resp: {metric.respiratory_rate}, Temp: {metric.temperature}°C"
-                    
-                    if decision == RoutingDecision.CRITICAL_HANDOFF:
-                        decision_str = "[bold red blink]CRITICAL_HANDOFF[/bold red blink]"
-                        action_str = "[red]Blocage IA -> Alerte SMS Vétérinaire[/red]"
-                    else:
-                        decision_str = "[bold green]NORMAL[/bold green]"
-                        action_str = "[green]Autorisé -> Routage vers LangGraph (RAG)[/green]"
-                        
-                    table.add_row(name, stats, decision_str, action_str)
+                table.add_row(name, stats, decision_str, action_str)
 
-                console.print(table)
-                console.print("\n[bold]Règle d'or respectée[/bold] : L'IA ne lira jamais les métriques du Collier B !\n")
+            console.print(table)
+            console.print("\n[bold]Règle d'or respectée[/bold] : L'IA ne lira jamais les métriques du Collier B !\n")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         console.print(f"[bold red]Erreur de connexion : {e}[/bold red]")
 
 if __name__ == "__main__":

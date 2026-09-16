@@ -1,9 +1,16 @@
 import os
 import random
+from datetime import UTC, datetime, timedelta
+
 import psycopg
-from datetime import datetime, timedelta, timezone
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 # -- Configuration
 DB_HOST = os.getenv("DB_HOST", "localhost")
@@ -41,7 +48,7 @@ def generate_critical_metrics(timestamp: datetime, collar_id: str) -> tuple:
 def seed_database():
     console.print("[bold cyan]Pawrise Care[/bold cyan] - Lancement du générateur de Mock Data...")
     
-    end_date = datetime.now(timezone.utc)
+    end_date = datetime.now(UTC)
     start_date = end_date - timedelta(days=DAYS_OF_HISTORY)
     
     # Calcul du nombre total de points par collier
@@ -65,43 +72,42 @@ def seed_database():
 
     # Insertion dans la base
     try:
-        with psycopg.connect(DSN) as conn:
-            with conn.cursor() as cur:
-                console.print(f"[green]Connecté à la base de données {DB_NAME}[/green]")
+        with psycopg.connect(DSN) as conn, conn.cursor() as cur:
+            console.print(f"[green]Connecté à la base de données {DB_NAME}[/green]")
+            
+            # Suppression des anciennes données pour ces colliers si relance du script
+            cur.execute("DELETE FROM dog_metrics WHERE anonymous_collar_id IN (%s, %s)", (COLLAR_A, COLLAR_B))
+            conn.commit()
+            
+            # Insertion par lot avec barre de progression Rich
+            insert_query = """
+                INSERT INTO dog_metrics (recorded_at, anonymous_collar_id, bpm, respiratory_rate, temperature)
+                VALUES (%s, %s, %s, %s, %s)
+            """
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeElapsedColumn(),
+                console=console
+            ) as progress:
+                task = progress.add_task("[cyan]Insertion des séries temporelles...", total=len(data_to_insert))
                 
-                # Suppression des anciennes données pour ces colliers si relance du script
-                cur.execute("DELETE FROM dog_metrics WHERE anonymous_collar_id IN (%s, %s)", (COLLAR_A, COLLAR_B))
-                conn.commit()
-                
-                # Insertion par lot avec barre de progression Rich
-                insert_query = """
-                    INSERT INTO dog_metrics (recorded_at, anonymous_collar_id, bpm, respiratory_rate, temperature)
-                    VALUES (%s, %s, %s, %s, %s)
-                """
-                
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[progress.description]{task.description}"),
-                    BarColumn(),
-                    TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                    TimeElapsedColumn(),
-                    console=console
-                ) as progress:
-                    task = progress.add_task("[cyan]Insertion des séries temporelles...", total=len(data_to_insert))
+                # On insère chunk par chunk avec executemany
+                chunk_size = 500
+                for j in range(0, len(data_to_insert), chunk_size):
+                    chunk = data_to_insert[j:j+chunk_size]
+                    cur.executemany(insert_query, chunk)
+                    progress.update(task, advance=len(chunk))
                     
-                    # On insère chunk par chunk avec executemany
-                    chunk_size = 500
-                    for j in range(0, len(data_to_insert), chunk_size):
-                        chunk = data_to_insert[j:j+chunk_size]
-                        cur.executemany(insert_query, chunk)
-                        progress.update(task, advance=len(chunk))
-                        
-                conn.commit()
-                console.print(f"[bold green]Succès ![/bold green] {len(data_to_insert)} lignes insérées dans 'dog_metrics'.")
-                console.print(f"[bold]Collier A (Sain)[/bold]: {COLLAR_A}")
-                console.print(f"[bold]Collier B (Handoff test)[/bold]: {COLLAR_B}")
+            conn.commit()
+            console.print(f"[bold green]Succès ![/bold green] {len(data_to_insert)} lignes insérées dans 'dog_metrics'.")
+            console.print(f"[bold]Collier A (Sain)[/bold]: {COLLAR_A}")
+            console.print(f"[bold]Collier B (Handoff test)[/bold]: {COLLAR_B}")
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         console.print(f"[bold red]Erreur de connexion ou d'insertion : {e}[/bold red]")
 
 if __name__ == "__main__":

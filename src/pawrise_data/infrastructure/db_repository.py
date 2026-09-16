@@ -1,9 +1,9 @@
-import os
-from typing import List
 from uuid import UUID
+
 import psycopg
 
 from pawrise_data.domain.models import DogMetric
+
 
 class DatabaseRepository:
     """
@@ -23,21 +23,20 @@ class DatabaseRepository:
             VALUES (%s, %s, %s, %s, %s)
         """
         # On ouvre la connexion, on exécute, on valide (commit) et on ferme
-        with psycopg.connect(self.dsn) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    query,
-                    (
-                        metric.recorded_at,
-                        metric.anonymous_collar_id,
-                        metric.bpm,
-                        metric.respiratory_rate,
-                        metric.temperature
-                    )
+        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                query,
+                (
+                    metric.recorded_at,
+                    metric.anonymous_collar_id,
+                    metric.bpm,
+                    metric.respiratory_rate,
+                    metric.temperature
                 )
-                conn.commit()
+            )
+            conn.commit()
 
-    def get_history(self, collar_id: UUID, days: int = 14) -> List[DogMetric]:
+    def get_history(self, collar_id: UUID, days: int = 14) -> list[DogMetric]:
         """
         [Opération de Lecture] - 'Sortir les archives'
         Récupère l'historique d'un collier sur les X derniers jours (utile pour l'IA/RAG).
@@ -50,18 +49,17 @@ class DatabaseRepository:
             ORDER BY recorded_at ASC
         """
         metrics = []
-        with psycopg.connect(self.dsn) as conn:
-            with conn.cursor() as cur:
-                cur.execute(query, (collar_id, f"{days} days"))
-                rows = cur.fetchall()
+        with psycopg.connect(self.dsn) as conn, conn.cursor() as cur:
+            cur.execute(query, (collar_id, f"{days} days"))
+            rows = cur.fetchall()
 
-                # On transforme chaque ligne de la base en objet DogMetric (Pydantic)
-                for row in rows:
-                    metrics.append(DogMetric(
-                        recorded_at=row[0],
-                        anonymous_collar_id=row[1],
-                        bpm=row[2],
-                        respiratory_rate=row[3],
-                        temperature=row[4]
-                    ))
+            # On transforme chaque ligne de la base en objet DogMetric (Pydantic)
+            for row in rows:
+                metrics.append(DogMetric(
+                    recorded_at=row[0],
+                    anonymous_collar_id=row[1],
+                    bpm=row[2],
+                    respiratory_rate=row[3],
+                    temperature=row[4]
+                ))
         return metrics
