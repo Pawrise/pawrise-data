@@ -11,6 +11,8 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.ruff_cache
+.env.example
 
 # IDEs and Editors
 .vscode/
