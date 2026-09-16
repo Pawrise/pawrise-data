@@ -1,0 +1,14 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  secret-scan:
+    uses: Pawrise/.github/.github/workflows/secret-scan.yml@main
+
+  python:
+    uses: Pawrise/.github/.github/workflows/python-ci.yml@main
+    with:
+      python-version: "3.12"
