@@ -12,14 +12,3 @@ jobs:
     uses: Pawrise/.github/.github/workflows/python-ci.yml@main
     with:
       python-version: "3.12"
-
-  notify:
-    needs: [secret-scan, python]
-    if: failure() && github.event_name == 'push'
-    uses: Pawrise/.github/.github/workflows/notify-discord.yml@main
-    secrets:
-      webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
-    with:
-      repo: ${{ github.repository }}
-      branch: ${{ github.ref_name }}
-      run-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
