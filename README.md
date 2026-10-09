@@ -1,24 +1,84 @@
-# Pawrise Care - Data/IA Component
+# Pawrise Care - Data et IA
 
-Ce dépôt contient la logique de traitement de la donnée et d'IA (LangGraph, RAG) pour le projet Pawrise Care.
+Ce dépôt regroupe le traitement des données du collier et la logique IA pour le projet Pawrise Care.
 
-## Sécurité et Conformité
-- **Anonymisation** : Aucune donnée nominative n'est traitée (on utilise des `anonymous_collar_id` UUID).
-- **Red Flags** : Détection d'anomalies en amont pour by-passer l'IA si besoin.
-- **IA en Cage** : L'IA ne pose aucun diagnostic médical (Code rural L243-1).
+---
 
-## Architecture du Pipeline de Données (Data Pipeline)
+## Contexte et principes
 
-Notre système agit comme une ligne d'assemblage (ou pipeline). Le point d'entrée est notre **Kafka Consumer**, qui orchestre le flux selon les étapes suivantes :
+Le système repose sur trois règles simples :
 
-1. **L'Ingestion (Streaming)** : Le backend (Rust) envoie les métriques brutes. Notre Consumer Kafka "écoute" et attrape cette donnée au vol dès qu'elle arrive sur le réseau.
-2. **Le Filtrage (Validation & Parsing)** : Le Consumer vérifie que la donnée est valide et la transforme en un objet Python (nos modèles **Pydantic**).
-3. **Le Garde-fou (Routing & Interceptor)** : Le Consumer donne cet objet à notre `AnomalyDetector`. C'est notre videur de boîte de nuit : il applique un algorithme **déterministe** (des règles strictes if/else, aucun appel à l'IA).
-4. **L'Aiguillage (Sink / Trigger)** :
-   - **Si c'est critique** : L'IA est bloquée. Le Consumer déclenche un Handoff vétérinaire immédiat (**Critical Handoff**).
-   - **Si c'est normal** : Le Consumer confie la donnée au magasinier (le **Database Repository**) pour la stocker (**Persistence** dans PostgreSQL/TimescaleDB), puis réveille le module IA (**LangGraph** / RAG) pour générer des conseils bien-être.
+- **Anonymisation** : aucune donnée personnelle n'est manipulée ici, seulement un identifiant de collier unique (`anonymous_collar_id`).
+- **Garde-fou déterministe** : repérer les urgences vitales dès l'entrée pour bloquer l'IA si l'animal est en danger.
+- **IA en cage** : l'IA n'a pas le droit de poser un diagnostic médical (Code rural, article L243-1). Son rôle se limite à contextualiser la donnée et orienter le propriétaire.
 
-## Démarrage rapide (Local)
+---
 
-1. `uv sync` (Installation des dépendances)
-2. `docker-compose up -d` (Lancement de la BDD PostgreSQL + TimescaleDB + pgvector)
+## Architecture du flux
+
+![Architecture du flux](https://mermaid.ink/img/CmdyYXBoIFRECiAgICBDb2xsaWVyKCJDb2xsaWVyIGNvbm5lY3TDqSIpIC0tPiBCYWNrZW5kKCJCYWNrZW5kIENvcmUgUnVzdCIpCiAgICBCYWNrZW5kIC0tPiBLYWZrYSgiS2Fma2EgVG9waWMgZG9nX21ldHJpY3MiKQogICAgCiAgICBLYWZrYSAtLT4gQ29uc3VtZXIoIkNvbnN1bWVyIEthZmthIC0gVGVtcHMgcsOpZWwiKQogICAgQ29uc3VtZXIgLS0-IFB5ZGFudGljKCJWYWxpZGF0aW9uIFB5ZGFudGljIikKICAgIFB5ZGFudGljIC0tPiBEZXRlY3RvcigiQW5vbWFseSBEZXRlY3RvciAtIExlIFZpZGV1ciIpCiAgICAKICAgIERldGVjdG9yIC0tIFVyZ2VuY2UgY3JpdGlxdWUgLS0-IENyaXRpY2FsKCJBbGVydGUgZXQgSUEgYmxvcXXDqWUiKQogICAgRGV0ZWN0b3IgLS0gRG9ubsOpZSBub3JtYWxlIC0tPiBSZXBvKCJEYXRhYmFzZSBSZXBvc2l0b3J5IikKICAgIAogICAgUmVwbyAtLT4gREJbKCJQb3N0Z3JlU1FMIGV0IFRpbWVzY2FsZURCIildCiAgICAKICAgIERCIC0uIFByb2NoYWluZW1lbnQgLi0-IExhbmdHcmFwaCgiQXNzaXN0YW50IElBIExhbmdHcmFwaCIpCg==)
+
+---
+
+## Fonctionnement du pipeline
+
+Le traitement s'organise comme une chaîne étape par étape :
+
+1. **Écoute** : le consumer Kafka écoute le topic en direct et attrape les métriques envoyées par le backend.
+2. **Validation** : Pydantic vérifie que la donnée est bien formée et que les constantes physiologiques sont cohérentes (rythme cardiaque, température, fréquence respiratoire).
+3. **Garde-fou** : l'intercepteur teste la donnée avec des règles strictes (seuils critiques). Aucun appel IA n'est fait à ce stade.
+4. **Aiguillage** :
+   - Si la situation est critique, l'IA est bloquée et une procédure d'urgence est lancée.
+   - Si la donnée est normale, elle est enregistrée dans TimescaleDB pour alimenter l'historique de santé du chien.
+
+---
+
+## État du projet
+
+### Ce qui est fait (MVP)
+
+- **Setup infra** : configuration locale de Kafka et de PostgreSQL avec les extensions TimescaleDB et pgvector sous Docker.
+- **Validation des données** : contrôle des métriques brutes avec Pydantic pour filtrer les paquets invalides.
+- **Écoute Kafka** : worker qui tourne en tâche de fond pour consommer les messages en temps réel.
+- **Le garde-fou (sécurité)** : script qui repère les urgences (tachycardie, forte fièvre, détresse respiratoire) pour bloquer l'IA.
+- **Base de données** : sauvegarde de l'historique de santé et requêtage des 14 derniers jours.
+- **Scripts de test** : simulateurs pour injecter de la donnée saine et tester le déclenchement des urgences.
+
+### Ce qui reste à faire
+
+- **Tenir la charge (Scale)** : le consumer traite actuellement les messages un par un. Il faut ajouter du traitement par lots (batching) et un pool de connexions pour absorber le flux de plusieurs milliers de colliers sans saturer la base.
+- **Garde-fou V2** : fiabiliser la détection en prenant en compte le niveau d'activité du chien (pour ne pas lever d'alerte s'il vient de courir) et ses constantes de base habituelles.
+- **Vraies alertes** : relier la sortie du garde-fou à un vrai canal d'alerte (topic Kafka dédié ou webhook vers le backend) pour notifier le propriétaire et le vétérinaire.
+- **Assistant IA (LangGraph)** : développer l'assistant avec LangGraph et du RAG sur un corpus vétérinaire, pour lire l'historique en base et proposer des conseils bien-être sans jamais poser de diagnostic.
+
+---
+
+## Lancement en local
+
+### Prérequis
+- Python 3.11 ou supérieur
+- uv
+- Docker et Docker Compose
+
+### Commandes
+
+Installer les dépendances :
+```bash
+uv sync
+```
+
+Démarrer l'infrastructure :
+```bash
+docker compose up -d
+```
+
+Lancer l'écoute Kafka :
+```bash
+uv run python -m pawrise_data.infrastructure.kafka_consumer
+```
+
+Générer des données de test :
+```bash
+uv run python -m pawrise_data.scripts.mock_generator
+uv run python -m pawrise_data.scripts.mock_producer
+```
