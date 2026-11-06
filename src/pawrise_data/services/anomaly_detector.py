@@ -9,9 +9,9 @@ from pawrise_data.domain.models import (
 
 class AnomalyDetector:
     """
-    Service déterministe (Règles Métier) qui intercepte la donnée 
-    AVANT tout envoi vers le LLM / LangGraph.
-    Garantit l'application stricte du principe 'IA en Cage'.
+    Service déterministe (Règles Métier) de garde-fou (Red Flags) qui
+    analyse les constantes vitales AVANT tout traitement ou archivage.
+    Stateless : aucune requête BDD, décision basée uniquement sur le payload.
     """
     
     # Seuils critiques au repos, par taille de race (à affiner avec les vrais vétérinaires)
@@ -51,7 +51,7 @@ class AnomalyDetector:
     def evaluate(cls, metric: DogMetric) -> RoutingDecision:
         """
         Évalue les métriques et retourne un statut de routage.
-        Si la situation est grave, on bloque l'IA et on alerte.
+        Si la situation est grave, déclenche un Critical Handoff (publication sur critical_alerts_topic).
         Stateless : décision basée uniquement sur le payload.
         """
         bpm_threshold, resp_threshold = cls._thresholds(metric)
@@ -66,5 +66,5 @@ class AnomalyDetector:
             
         # ... (D'autres règles if/else déterministes peuvent être ajoutées ici)
         
-        # Par défaut : La donnée est considérée sûre pour être contextualisée par l'IA
+        # Par défaut : La donnée est considérée normale et peut être archivée dans TimescaleDB
         return RoutingDecision.NORMAL
