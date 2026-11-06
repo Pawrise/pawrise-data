@@ -57,7 +57,6 @@ def test_respiratory_distress_is_critical(make_metric, size, limit):
 )
 def test_effort_context_raises_thresholds(make_metric, overrides):
     """En effort (course, agitation, fugue), les seuils sont relevés : un bpm élevé y est toléré."""
-    # 160 bpm > 150 (medium au repos) mais < 150 * 1.35 = 202.5
     resting = make_metric(bpm=160, temperature=40.5)
     effort = make_metric(bpm=160, temperature=40.5, **overrides)
     assert AnomalyDetector.evaluate(resting) == CRITICAL
@@ -66,7 +65,6 @@ def test_effort_context_raises_thresholds(make_metric, overrides):
 
 def test_effort_resp_multiplier(make_metric):
     """En effort, la respiration tolérée double avant de déclencher l'urgence."""
-    # medium: 45 au repos, 90 sous effort
     assert AnomalyDetector.evaluate(make_metric(respiratory_rate=80, activity="RUNNING")) == NORMAL
     assert AnomalyDetector.evaluate(make_metric(respiratory_rate=91, activity="RUNNING")) == CRITICAL
 

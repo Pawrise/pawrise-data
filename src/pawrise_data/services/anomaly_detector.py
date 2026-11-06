@@ -16,9 +16,11 @@ class AnomalyDetector:
     Service déterministe (Règles Métier) de garde-fou (Red Flags) qui
     analyse les constantes vitales AVANT tout traitement ou archivage.
     Stateless : aucune requête BDD, décision basée uniquement sur le payload.
+
+    Les seuils sont ceux d'un chien au repos, par taille de race (à affiner avec
+    des vétérinaires). En effort (course, agitation, fugue), ils sont relevés.
     """
-    
-    # Seuils critiques au repos, par taille de race (à affiner avec les vrais vétérinaires)
+
     CRITICAL_BPM_BY_SIZE: ClassVar[dict[BreedSize, int]] = {
         BreedSize.SMALL: 170,
         BreedSize.MEDIUM: 150,
@@ -31,7 +33,6 @@ class AnomalyDetector:
     }
     CRITICAL_TEMP_THRESHOLD = 40.0
 
-    # Contexte d'effort / stress : seuils significativement relevés
     EFFORT_ACTIVITIES: frozenset[Activity] = frozenset({Activity.RUNNING, Activity.AGITATED})
     EFFORT_FSM_STATES: frozenset[FsmState] = frozenset({FsmState.ESCAPE})
     EFFORT_BPM_MULTIPLIER = 1.35
@@ -58,21 +59,19 @@ class AnomalyDetector:
         Évalue les métriques et retourne un statut de routage.
         Si la situation est grave, déclenche un Critical Handoff (publication sur critical_alerts_topic).
         Stateless : décision basée uniquement sur le payload.
+
+        Règle 1 : tachycardie sévère combinée à une forte fièvre. Le bpm brut ou
+        lissé (calculé en amont) peut déclencher l'alerte : le lissage ne doit
+        jamais masquer un pic réel.
+        Règle 2 : détresse respiratoire isolée.
         """
         bpm_threshold, resp_threshold = cls._thresholds(metric)
 
-        # Règle 1 : Tachycardie sévère combinée à une forte fièvre
-        # Garde-fou : alerte si le bpm brut OU lissé (calculé en amont) dépasse le seuil,
-        # le lissage ne doit jamais masquer un pic réel. Détecteur stateless.
         bpm_value = max(metric.bpm, metric.bpm_moving_avg or 0.0)
         if bpm_value > bpm_threshold and metric.temperature > cls.CRITICAL_TEMP_THRESHOLD:
             return RoutingDecision.CRITICAL_HANDOFF
 
-        # Règle 2 : Détresse respiratoire isolée
         if metric.respiratory_rate > resp_threshold:
             return RoutingDecision.CRITICAL_HANDOFF
-            
-        # ... (D'autres règles if/else déterministes peuvent être ajoutées ici)
-        
-        # Par défaut : La donnée est considérée normale et peut être archivée dans TimescaleDB
+
         return RoutingDecision.NORMAL

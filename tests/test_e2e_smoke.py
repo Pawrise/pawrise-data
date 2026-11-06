@@ -73,7 +73,7 @@ def pipeline(stack: None) -> Iterator[None]:
         )
     ]
     try:
-        time.sleep(5)  # connexion MQTT + rebalance du groupe consumer
+        time.sleep(5)
         for p in procs:
             assert p.poll() is None, "un processus du pipeline s'est arrêté au démarrage"
         yield
@@ -136,12 +136,10 @@ def test_mqtt_to_timescaledb_smoke(pipeline: None) -> None:
         time.sleep(1)
 
     try:
-        # >= 1 : un pont déjà lancé en local peut dupliquer le message (recorded_at distinct)
         assert rows, f"aucune ligne stockée en {TIMEOUT_S}s pour {collar_id}"
         bpm, resp, temp, activity, fsm, weight, age, breed = rows[0]
         assert (bpm, resp, activity, fsm) == (90, 20, "REST", "REST")
         assert temp == pytest.approx(38.5)
-        # Enrichissement du pont (Data Contract)
         assert weight > 0
         assert age >= 0
         assert breed in {"small", "medium", "large"}

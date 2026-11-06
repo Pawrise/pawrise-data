@@ -14,7 +14,6 @@ from pawrise_data.services.anomaly_detector import AnomalyDetector
 
 console = Console()
 
-# Configuration
 KAFKA_BROKER_URL = os.getenv("KAFKA_BROKER_URL", "localhost:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "dog_metrics_topic")
 KAFKA_DLQ_TOPIC = os.getenv("KAFKA_DLQ_TOPIC", "dog_metrics_dlq")
@@ -57,12 +56,11 @@ class MetricsConsumer:
         self.batch_size = batch_size
         self.flush_interval = flush_interval
 
-        # Configuration de confluent-kafka
         conf = {
             'bootstrap.servers': broker,
             'group.id': 'pawrise_data_group',
-            'auto.offset.reset': 'earliest',  # Commencer au début si nouveau
-            'enable.auto.commit': False,  # Commit manuel après flush du lot
+            'auto.offset.reset': 'earliest',
+            'enable.auto.commit': False,
         }
         self.consumer = Consumer(conf)
         self.producer = Producer({'bootstrap.servers': broker})
@@ -118,17 +116,14 @@ class MetricsConsumer:
             self._send_to_dlq(raw, "invalid_message: empty payload")
             return
         try:
-            # 1. Parsing du colis brut puis vérification de la forme (Pydantic)
             metric = DogMetric.model_validate(json.loads(raw.decode('utf-8')))
         except Exception as e:  # noqa: BLE001
             console.print(f"[yellow]⚠️ Colis malformé redirigé vers la DLQ : {e}[/yellow]")
             self._send_to_dlq(raw, f"invalid_message: {e}")
             return
 
-        # 2. Passage au Videur (Règles métier)
         decision = AnomalyDetector.evaluate(metric)
 
-        # 3. Action en fonction de la décision
         if decision == RoutingDecision.CRITICAL_HANDOFF:
             console.print(f"[bold red blink]🚨 URGENCE DETECTEE (Collier {metric.anonymous_collar_id}) ![/bold red blink]")
             console.print(f"[red]   -> BPM: {metric.bpm} | Resp: {metric.respiratory_rate} | Temp: {metric.temperature}°C[/red]")
@@ -154,10 +149,8 @@ class MetricsConsumer:
                     err = msg.error()
                     if err is not None:
                         if err.code() == KafkaError._PARTITION_EOF:
-                            # Fin de partition, on ignore
                             pass
                         elif err.code() == KafkaError.UNKNOWN_TOPIC_OR_PART:
-                            # Le topic n'existe pas encore
                             console.print("[dim]Le topic n'existe pas encore, en attente du premier message...[/dim]")
                             time.sleep(2)
                         else:
@@ -172,7 +165,6 @@ class MetricsConsumer:
                     bool(self._batch)
                     and time.monotonic() - self._batch_started_at >= self.flush_interval
                 )
-                # Sans lot en attente, on commit dès que DLQ/alertes sont produites
                 idle_commit = self._pending_commit and not self._batch
                 if batch_full or batch_expired or idle_commit:
                     self._flush_batch()
@@ -180,7 +172,6 @@ class MetricsConsumer:
         except KeyboardInterrupt:
             console.print("\n[cyan]Arrêt demandé par l'utilisateur...[/cyan]")
         finally:
-            # On vide le lot restant et on ferme proprement
             self.running = False
             try:
                 self._flush_batch()
@@ -200,7 +191,6 @@ if __name__ == "__main__":
         db_repo=db_repository
     )
 
-    # Gestion de l'arrêt propre (Ctrl+C)
     def signal_handler(sig, frame):
         """Demande l'arrêt propre du consommateur (Ctrl+C / SIGTERM)."""
         metrics_consumer.running = False

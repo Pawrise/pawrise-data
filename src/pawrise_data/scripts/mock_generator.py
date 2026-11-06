@@ -2,6 +2,10 @@
 
 Aucun accès BDD / Kafka : ce module ne fait que fabriquer des payloads MQTT
 conformes à `CollarPayload` (cf. `infrastructure/mqtt_ingestion.py`).
+
+Colliers fixes, dont le profil est déterministe côté ingestion (`mock_enrich`) :
+A = chien au repos, B = chien en fugue (ESCAPE), C = urgence critique au repos,
+MEDIUM / LARGE = colliers de breed_size `medium` / `large`.
 """
 
 import random
@@ -9,13 +13,11 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
-# UUIDs fixes (enrichissement déterministe par device_id côté ingestion)
-COLLAR_A = "11111111-1111-1111-1111-111111111111"  # Chien au repos
-COLLAR_B = "22222222-2222-2222-2222-222222222222"  # Chien en fugue (ESCAPE)
-COLLAR_C = "33333333-3333-3333-3333-333333333333"  # Urgence critique au repos
-# Colliers dont le breed_size (dérivé du device_id par mock_enrich) est connu
-COLLAR_MEDIUM = "00000006-0006-4006-8006-000000000006"  # breed_size = medium
-COLLAR_LARGE = "00000009-0009-4009-8009-000000000009"  # breed_size = large
+COLLAR_A = "11111111-1111-1111-1111-111111111111"
+COLLAR_B = "22222222-2222-2222-2222-222222222222"
+COLLAR_C = "33333333-3333-3333-3333-333333333333"
+COLLAR_MEDIUM = "00000006-0006-4006-8006-000000000006"
+COLLAR_LARGE = "00000009-0009-4009-8009-000000000009"
 
 
 def _payload(
@@ -106,7 +108,7 @@ class Scenario:
     """Un scénario de test : nom, résultat attendu, générateur, collier utilisé et nombre de messages."""
     name: str
     description: str
-    expected: str  # NORMAL | CRITICAL_HANDOFF
+    expected: str
     factory: Callable[[str], dict[str, Any]]
     device_id: str
     count: int

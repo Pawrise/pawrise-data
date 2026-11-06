@@ -18,7 +18,6 @@ from rich.console import Console
 
 console = Console()
 
-# Configuration
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "pawrise/+/telemetry")

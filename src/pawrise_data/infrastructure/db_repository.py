@@ -81,7 +81,6 @@ class DatabaseRepository:
             cur.execute(query, (collar_id, f"{days} days"))
             rows = cur.fetchall()
 
-        # On transforme chaque ligne de la base en objet DogMetric (Pydantic)
         return [
             DogMetric(
                 recorded_at=row[0],
