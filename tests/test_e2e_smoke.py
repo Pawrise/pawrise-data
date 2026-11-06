@@ -34,6 +34,7 @@ pytestmark = pytest.mark.e2e
 
 
 def _reachable(host: str, port: int) -> bool:
+    """Vrai si un service répond sur ce port réseau."""
     try:
         with socket.create_connection((host, port), timeout=1.0):
             return True
@@ -43,6 +44,7 @@ def _reachable(host: str, port: int) -> bool:
 
 @pytest.fixture(scope="module")
 def stack() -> None:
+    """Saute le test si la stack Docker (MQTT, Kafka, base) n'est pas démarrée."""
     down = [
         name
         for name, host, port in (
@@ -86,6 +88,7 @@ def pipeline(stack: None) -> Iterator[None]:
 
 
 def _publish(collar_id: UUID, payload: dict) -> None:
+    """Publie un message collier sur MQTT, comme le ferait un vrai collier."""
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     client.connect(MQTT_HOST, MQTT_PORT)
     client.loop_start()
@@ -98,6 +101,7 @@ def _publish(collar_id: UUID, payload: dict) -> None:
 
 
 def _fetch_rows(collar_id: UUID) -> list[tuple]:
+    """Relit en base les lignes enregistrées pour un collier."""
     with psycopg.connect(DSN) as conn, conn.cursor() as cur:
         cur.execute(
             "SELECT bpm, respiratory_rate, temperature, activity, fsm_state, "
@@ -109,6 +113,7 @@ def _fetch_rows(collar_id: UUID) -> list[tuple]:
 
 
 def test_mqtt_to_timescaledb_smoke(pipeline: None) -> None:
+    """Test de fumée : un message MQTT traverse tout le pipeline et arrive en base, enrichi."""
     collar_id = uuid4()
     _publish(
         collar_id,

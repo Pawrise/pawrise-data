@@ -27,6 +27,7 @@ def _payload(
     bpm: int,
     respiratory_rate: int,
 ) -> dict[str, Any]:
+    """Assemble un message collier (format MQTT) à partir des valeurs données."""
     return {
         "device_id": device_id,
         "temperature": round(temperature, 1),
@@ -102,6 +103,7 @@ def critical_at_rest(device_id: str = COLLAR_C) -> dict[str, Any]:
 
 @dataclass(frozen=True)
 class Scenario:
+    """Un scénario de test : nom, résultat attendu, générateur, collier utilisé et nombre de messages."""
     name: str
     description: str
     expected: str  # NORMAL | CRITICAL_HANDOFF
