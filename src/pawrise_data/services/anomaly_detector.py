@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from pawrise_data.domain.models import (
     Activity,
     BreedSize,
@@ -15,12 +17,12 @@ class AnomalyDetector:
     """
     
     # Seuils critiques au repos, par taille de race (à affiner avec les vrais vétérinaires)
-    CRITICAL_BPM_BY_SIZE: dict[BreedSize, int] = {
+    CRITICAL_BPM_BY_SIZE: ClassVar[dict[BreedSize, int]] = {
         BreedSize.SMALL: 170,
         BreedSize.MEDIUM: 150,
         BreedSize.LARGE: 130,
     }
-    CRITICAL_RESP_BY_SIZE: dict[BreedSize, int] = {
+    CRITICAL_RESP_BY_SIZE: ClassVar[dict[BreedSize, int]] = {
         BreedSize.SMALL: 50,
         BreedSize.MEDIUM: 45,
         BreedSize.LARGE: 40,
