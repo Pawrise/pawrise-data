@@ -1,8 +1,11 @@
+"""Pont d'ingestion : reçoit les messages du collier (MQTT), les enrichit puis les envoie dans Kafka."""
+
 import json
 import os
 import random
 import signal
 import threading
+from collections import OrderedDict, deque
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
@@ -21,9 +24,12 @@ MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "pawrise/+/telemetry")
 KAFKA_BROKER_URL = os.getenv("KAFKA_BROKER_URL", "localhost:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "dog_metrics_topic")
+BPM_WINDOW_SIZE = int(os.getenv("BPM_WINDOW_SIZE", "5"))
+MAX_TRACKED_COLLARS = int(os.getenv("MAX_TRACKED_COLLARS", "10000"))
 
 
 class Activity(str, Enum):
+    """Niveau d'activité du chien tel qu'envoyé par le collier."""
     REST = "REST"
     WALKING = "WALKING"
     RUNNING = "RUNNING"
@@ -52,6 +58,7 @@ class EnrichedMetric(BaseModel):
     weight_kg: float = Field(gt=0)
     age_months: int = Field(ge=0)
     breed_size: Literal["small", "medium", "large"]
+    bpm_moving_avg: float | None = Field(default=None, gt=0)
 
 
 def mock_enrich(collar: CollarPayload) -> dict[str, Any]:
@@ -73,14 +80,28 @@ class MqttToKafkaBridge:
     """Pont MQTT (Mosquitto) -> Kafka `dog_metrics_topic`."""
 
     def __init__(self) -> None:
+        """Prépare le producteur Kafka, le client MQTT et la mémoire des moyennes mobiles (une fenêtre par collier)."""
         self._producer = Producer({"bootstrap.servers": KAFKA_BROKER_URL})
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
         self._client.on_connect = self._on_connect
         self._client.on_message = self._on_message
         self._stop = threading.Event()
+        self._bpm_windows: OrderedDict[UUID, deque[int]] = OrderedDict()
+
+    def _bpm_moving_avg(self, collar: CollarPayload) -> float | None:
+        """Moyenne mobile du bpm par collier (état porté par l'ingestion, pas par le détecteur)."""
+        if collar.bpm is None:
+            return None
+        window = self._bpm_windows.setdefault(collar.device_id, deque(maxlen=BPM_WINDOW_SIZE))
+        self._bpm_windows.move_to_end(collar.device_id)
+        while len(self._bpm_windows) > MAX_TRACKED_COLLARS:
+            self._bpm_windows.popitem(last=False)
+        window.append(collar.bpm)
+        return round(sum(window) / len(window), 1)
 
     @staticmethod
     def _delivery_report(err: Any, msg: Any) -> None:
+        """Appelé par Kafka après l'envoi : signale un échec de livraison."""
         if err is not None:
             console.print(f"[red]Échec de livraison Kafka: {err}[/red]")
 
@@ -92,6 +113,7 @@ class MqttToKafkaBridge:
         reason_code: Any,
         properties: Any = None,
     ) -> None:
+        """Appelé à la connexion MQTT : s'abonne aux messages des colliers si la connexion est acceptée."""
         if reason_code.is_failure:
             console.print(f"[red]Connexion MQTT refusée: {reason_code}[/red]")
             return
@@ -99,6 +121,7 @@ class MqttToKafkaBridge:
         console.print(f"[green]MQTT connecté, abonné à[/green] {MQTT_TOPIC}")
 
     def _on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
+        """Traite un message collier : le valide, l'enrichit (profil + bpm lissé) puis le publie dans Kafka. Un message invalide est écarté."""
         try:
             collar = CollarPayload.model_validate(json.loads(msg.payload.decode("utf-8")))
             metric = EnrichedMetric.model_validate(
@@ -110,6 +133,7 @@ class MqttToKafkaBridge:
                     "fsm_state": collar.fsm_state,
                     "bpm": collar.bpm,
                     "respiratory_rate": collar.respiratory_rate,
+                    "bpm_moving_avg": self._bpm_moving_avg(collar),
                     **mock_enrich(collar),
                 }
             )
@@ -127,6 +151,7 @@ class MqttToKafkaBridge:
         console.print(f"[dim]{msg.topic} -> {KAFKA_TOPIC} ({metric.anonymous_collar_id})[/dim]")
 
     def run(self) -> None:
+        """Lance le pont jusqu'à Ctrl+C / SIGTERM, puis s'arrête proprement (envoi des messages en attente)."""
         signal.signal(signal.SIGINT, lambda *_: self._stop.set())
         signal.signal(signal.SIGTERM, lambda *_: self._stop.set())
         console.print(
@@ -145,6 +170,7 @@ class MqttToKafkaBridge:
 
 
 def main() -> None:
+    """Point d'entrée : démarre le pont MQTT -> Kafka."""
     MqttToKafkaBridge().run()
 
 

@@ -1,3 +1,5 @@
+"""Modèles du domaine : le vocabulaire commun du pipeline (mesures du collier, états, décisions)."""
+
 from datetime import datetime
 from enum import Enum
 from uuid import UUID
@@ -39,7 +41,10 @@ class BreedSize(str, Enum):
 
 
 class DogMetric(BaseModel):
-    """Modèle de domaine pur pour une métrique."""
+    """Une mesure de santé validée : constantes vitales + profil du chien, identifiée par un collier anonyme.
+
+    `bpm_moving_avg` (optionnel) est le bpm lissé, calculé en amont par l'ingestion.
+    """
     anonymous_collar_id: UUID
     recorded_at: datetime
     bpm: int = Field(ge=20, le=400)
@@ -50,3 +55,4 @@ class DogMetric(BaseModel):
     weight_kg: float = Field(gt=0, le=120.0)
     age_months: int = Field(ge=0, le=360)
     breed_size: BreedSize
+    bpm_moving_avg: float | None = Field(default=None, ge=20, le=400)

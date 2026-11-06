@@ -1,3 +1,5 @@
+"""Consommateur Kafka : lit les mesures, déclenche les alertes urgentes et archive les mesures normales en base."""
+
 import json
 import os
 import signal
@@ -47,6 +49,7 @@ class MetricsConsumer:
         batch_size: int = BATCH_SIZE,
         flush_interval: float = BATCH_FLUSH_INTERVAL,
     ):
+        """Configure la connexion Kafka (commit manuel des offsets) et prépare le lot de mesures en attente."""
         self.topic = topic
         self.db_repo = db_repo
         self.dlq_topic = dlq_topic
@@ -70,6 +73,7 @@ class MetricsConsumer:
         self._pending_commit = False
 
     def _send_to_dlq(self, raw: bytes | None, reason: str) -> None:
+        """Envoie un message inexploitable dans la DLQ (file des erreurs), avec la raison, pour ne rien perdre."""
         self.producer.produce(
             self.dlq_topic,
             value=raw,
@@ -78,6 +82,7 @@ class MetricsConsumer:
         self.producer.poll(0)
 
     def _publish_alert(self, metric: DogMetric) -> None:
+        """Publie une urgence (CRITICAL_HANDOFF) sur le topic des alertes critiques."""
         payload = {
             'decision': RoutingDecision.CRITICAL_HANDOFF.value,
             'metric': metric.model_dump(mode='json'),
@@ -108,6 +113,7 @@ class MetricsConsumer:
             self._pending_commit = False
 
     def _handle_message(self, raw: bytes | None) -> None:
+        """Traite un message : l'invalide va à la DLQ, l'urgent déclenche une alerte, le normal rejoint le lot à archiver."""
         if raw is None:
             self._send_to_dlq(raw, "invalid_message: empty payload")
             return
@@ -134,6 +140,7 @@ class MetricsConsumer:
             self._batch.append((metric, raw))
 
     def start(self):
+        """Boucle principale : lit les messages, archive par lots (taille ou délai atteint) et s'arrête proprement."""
         self.consumer.subscribe([self.topic])
         self.running = True
         console.print(f"[bold cyan]Démarrage du Kafka Consumer sur le topic '{self.topic}'...[/bold cyan]")
@@ -195,6 +202,7 @@ if __name__ == "__main__":
 
     # Gestion de l'arrêt propre (Ctrl+C)
     def signal_handler(sig, frame):
+        """Demande l'arrêt propre du consommateur (Ctrl+C / SIGTERM)."""
         metrics_consumer.running = False
 
     signal.signal(signal.SIGINT, signal_handler)

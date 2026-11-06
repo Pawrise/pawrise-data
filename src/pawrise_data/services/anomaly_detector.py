@@ -1,3 +1,5 @@
+"""Garde-fou déterministe : compare les constantes vitales à des seuils fixes pour détecter une urgence."""
+
 from typing import ClassVar
 
 from pawrise_data.domain.models import (
@@ -37,6 +39,7 @@ class AnomalyDetector:
 
     @classmethod
     def _is_under_effort(cls, metric: DogMetric) -> bool:
+        """Vrai si le chien est en effort (course, agitation, fugue) : ses seuils d'alerte sont alors relevés."""
         return metric.activity in cls.EFFORT_ACTIVITIES or metric.fsm_state in cls.EFFORT_FSM_STATES
 
     @classmethod
@@ -59,7 +62,10 @@ class AnomalyDetector:
         bpm_threshold, resp_threshold = cls._thresholds(metric)
 
         # Règle 1 : Tachycardie sévère combinée à une forte fièvre
-        if metric.bpm > bpm_threshold and metric.temperature > cls.CRITICAL_TEMP_THRESHOLD:
+        # Garde-fou : alerte si le bpm brut OU lissé (calculé en amont) dépasse le seuil,
+        # le lissage ne doit jamais masquer un pic réel. Détecteur stateless.
+        bpm_value = max(metric.bpm, metric.bpm_moving_avg or 0.0)
+        if bpm_value > bpm_threshold and metric.temperature > cls.CRITICAL_TEMP_THRESHOLD:
             return RoutingDecision.CRITICAL_HANDOFF
 
         # Règle 2 : Détresse respiratoire isolée

@@ -25,6 +25,16 @@ SELECT create_hypertable(
     if_not_exists => TRUE
 );
 
+-- 3b. Compression columnar (chunks > 7 jours) et rétention (> 90 jours)
+ALTER TABLE dog_metrics SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'anonymous_collar_id',
+    timescaledb.compress_orderby = 'recorded_at DESC'
+);
+
+SELECT add_compression_policy('dog_metrics', INTERVAL '7 days', if_not_exists => TRUE);
+SELECT add_retention_policy('dog_metrics', INTERVAL '90 days', if_not_exists => TRUE);
+
 -- 4. Index optimisé pour nos services métier (Handoff) et RAG
 CREATE INDEX IF NOT EXISTS ix_dog_metrics_collar_time 
 ON dog_metrics (anonymous_collar_id, recorded_at DESC);
