@@ -104,3 +104,41 @@ def test_on_connect_failure_does_not_subscribe(bridge):
     client = MagicMock()
     bridge._on_connect(client, None, None, SimpleNamespace(is_failure=True))
     client.subscribe.assert_not_called()
+
+
+def _collar(device_id, bpm):
+    return mqtt_ingestion.CollarPayload.model_validate(
+        {"device_id": device_id, "temperature": 38.6, "activity": "REST", "fsm_state": "REST", "bpm": bpm}
+    )
+
+
+def test_bpm_moving_avg_sliding_window(bridge):
+    dev = uuid4()
+    window = mqtt_ingestion.BPM_WINDOW_SIZE
+    values = list(range(100, 100 + window + 2))
+    avgs = [bridge._bpm_moving_avg(_collar(dev, v)) for v in values]
+    assert avgs[0] == 100.0
+    assert avgs[-1] == round(sum(values[-window:]) / window, 1)
+
+
+def test_bpm_moving_avg_isolated_per_collar(bridge):
+    a, b = uuid4(), uuid4()
+    bridge._bpm_moving_avg(_collar(a, 200))
+    assert bridge._bpm_moving_avg(_collar(b, 80)) == 80.0
+
+
+def test_bpm_moving_avg_none_when_bpm_missing(bridge):
+    assert bridge._bpm_moving_avg(_collar(uuid4(), None)) is None
+
+
+def test_bpm_windows_are_bounded(bridge, monkeypatch):
+    monkeypatch.setattr(mqtt_ingestion, "MAX_TRACKED_COLLARS", 3)
+    for _ in range(10):
+        bridge._bpm_moving_avg(_collar(uuid4(), 90))
+    assert len(bridge._bpm_windows) == 3
+
+
+def test_published_payload_contains_moving_avg(bridge):
+    bridge._on_message(None, None, _msg(_payload()))
+    sent = json.loads(bridge._producer.produce.call_args.kwargs["value"])
+    assert sent["bpm_moving_avg"] == 90.0

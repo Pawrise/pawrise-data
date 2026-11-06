@@ -73,3 +73,18 @@ def test_walking_is_not_effort(make_metric):
 def test_evaluate_is_stateless(make_metric):
     metric = make_metric(respiratory_rate=60)
     assert {AnomalyDetector.evaluate(metric) for _ in range(5)} == {CRITICAL}
+
+
+def test_raw_spike_not_masked_by_smoothing(make_metric):
+    metric = make_metric(bpm=200, bpm_moving_avg=120.0, temperature=40.5)
+    assert AnomalyDetector.evaluate(metric) == CRITICAL
+
+
+def test_sustained_smoothed_tachycardia_is_critical(make_metric):
+    metric = make_metric(bpm=140, bpm_moving_avg=160.0, temperature=40.5)
+    assert AnomalyDetector.evaluate(metric) == CRITICAL
+
+
+def test_moving_avg_below_threshold_is_normal(make_metric):
+    metric = make_metric(bpm=100, bpm_moving_avg=110.0, temperature=40.5)
+    assert AnomalyDetector.evaluate(metric) == NORMAL

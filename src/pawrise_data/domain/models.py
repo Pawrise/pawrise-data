@@ -50,3 +50,4 @@ class DogMetric(BaseModel):
     weight_kg: float = Field(gt=0, le=120.0)
     age_months: int = Field(ge=0, le=360)
     breed_size: BreedSize
+    bpm_moving_avg: float | None = Field(default=None, ge=20, le=400)

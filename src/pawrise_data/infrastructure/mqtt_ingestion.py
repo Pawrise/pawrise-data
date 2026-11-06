@@ -3,6 +3,7 @@ import os
 import random
 import signal
 import threading
+from collections import OrderedDict, deque
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
@@ -21,6 +22,8 @@ MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "pawrise/+/telemetry")
 KAFKA_BROKER_URL = os.getenv("KAFKA_BROKER_URL", "localhost:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "dog_metrics_topic")
+BPM_WINDOW_SIZE = int(os.getenv("BPM_WINDOW_SIZE", "5"))
+MAX_TRACKED_COLLARS = int(os.getenv("MAX_TRACKED_COLLARS", "10000"))
 
 
 class Activity(str, Enum):
@@ -52,6 +55,7 @@ class EnrichedMetric(BaseModel):
     weight_kg: float = Field(gt=0)
     age_months: int = Field(ge=0)
     breed_size: Literal["small", "medium", "large"]
+    bpm_moving_avg: float | None = Field(default=None, gt=0)
 
 
 def mock_enrich(collar: CollarPayload) -> dict[str, Any]:
@@ -78,6 +82,18 @@ class MqttToKafkaBridge:
         self._client.on_connect = self._on_connect
         self._client.on_message = self._on_message
         self._stop = threading.Event()
+        self._bpm_windows: OrderedDict[UUID, deque[int]] = OrderedDict()
+
+    def _bpm_moving_avg(self, collar: CollarPayload) -> float | None:
+        """Moyenne mobile du bpm par collier (état porté par l'ingestion, pas par le détecteur)."""
+        if collar.bpm is None:
+            return None
+        window = self._bpm_windows.setdefault(collar.device_id, deque(maxlen=BPM_WINDOW_SIZE))
+        self._bpm_windows.move_to_end(collar.device_id)
+        while len(self._bpm_windows) > MAX_TRACKED_COLLARS:
+            self._bpm_windows.popitem(last=False)
+        window.append(collar.bpm)
+        return round(sum(window) / len(window), 1)
 
     @staticmethod
     def _delivery_report(err: Any, msg: Any) -> None:
@@ -110,6 +126,7 @@ class MqttToKafkaBridge:
                     "fsm_state": collar.fsm_state,
                     "bpm": collar.bpm,
                     "respiratory_rate": collar.respiratory_rate,
+                    "bpm_moving_avg": self._bpm_moving_avg(collar),
                     **mock_enrich(collar),
                 }
             )
