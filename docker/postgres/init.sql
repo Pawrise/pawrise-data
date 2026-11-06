@@ -9,6 +9,11 @@ CREATE TABLE IF NOT EXISTS dog_metrics (
     bpm SMALLINT NOT NULL CHECK (bpm > 0),
     respiratory_rate SMALLINT NOT NULL CHECK (respiratory_rate > 0),
     temperature REAL NOT NULL, -- Température en degrés Celsius
+    activity TEXT NOT NULL CHECK (activity IN ('REST', 'WALKING', 'RUNNING', 'AGITATED')),
+    fsm_state TEXT NOT NULL,
+    weight_kg REAL NOT NULL CHECK (weight_kg > 0),
+    age_months INTEGER NOT NULL CHECK (age_months >= 0),
+    breed_size TEXT NOT NULL CHECK (breed_size IN ('small', 'medium', 'large')),
     UNIQUE (anonymous_collar_id, recorded_at)
 );
 

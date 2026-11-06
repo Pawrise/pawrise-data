@@ -1,77 +1,68 @@
+"""Publie de faux payloads collier sur Mosquitto (MQTT) pour tester la chaîne complète.
+
+Chaîne attendue : MQTT -> mqtt_ingestion.py -> Kafka dog_metrics_topic
+-> kafka_consumer / anomaly_detector -> critical_alerts_topic (si urgence).
+
+Usage :
+    uv run python -m pawrise_data.scripts.mock_producer [--scenario rest escape ...] [--interval 1.0]
+"""
+
+import argparse
 import json
 import os
 import time
-from datetime import UTC, datetime
 
-from confluent_kafka import Producer
+import paho.mqtt.client as mqtt
 from rich.console import Console
 
-# UUIDs de test correspondants
-COLLAR_A = "11111111-1111-1111-1111-111111111111"  # Chien sain
-COLLAR_B = "22222222-2222-2222-2222-222222222222"  # Handoff test
+from pawrise_data.scripts.mock_generator import SCENARIOS, generate_scenarios
+
+MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 
 console = Console()
 
-KAFKA_BROKER_URL = os.getenv("KAFKA_BROKER_URL", "localhost:9092")
-KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "dog_metrics_topic")
 
-def delivery_report(err, msg):
-    """Callback appelé une fois le message délivré ou en échec."""
-    if err is not None:
-        console.print(f"[red]Échec de livraison: {err}[/red]")
-    else:
-        # Affichage minimaliste
-        pass
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Mock collier -> MQTT")
+    parser.add_argument(
+        "--scenario",
+        nargs="*",
+        choices=[s.name for s in SCENARIOS],
+        help="Scénarios à jouer (défaut : tous, dans l'ordre)",
+    )
+    parser.add_argument("--interval", type=float, default=1.0, help="Délai entre messages (s)")
+    args = parser.parse_args()
 
-def main():
-    console.print(f"[bold cyan]Pawrise Care[/bold cyan] - Démarrage du Mock Producer vers Kafka ({KAFKA_BROKER_URL})")
+    console.print(f"[bold cyan]Pawrise Care[/bold cyan] - Mock Producer vers MQTT ({MQTT_HOST}:{MQTT_PORT})")
 
-    conf = {'bootstrap.servers': KAFKA_BROKER_URL}
-    producer = Producer(conf)
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+    try:
+        client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
+    except OSError as exc:
+        console.print(f"[bold red]Connexion MQTT impossible: {exc}[/bold red]")
+        return
+    client.loop_start()
 
     try:
-        # Envoi de 3 données normales
-        for i in range(3):
-            metric_data = {
-                "recorded_at": datetime.now(UTC).isoformat(),
-                "anonymous_collar_id": COLLAR_A,
-                "bpm": 85 + i,
-                "respiratory_rate": 20 + i,
-                "temperature": 38.5
-            }
-            producer.produce(
-                KAFKA_TOPIC,
-                value=json.dumps(metric_data).encode('utf-8'),
-                callback=delivery_report
+        for scenario, payload in generate_scenarios(args.scenario):
+            topic = f"pawrise/{payload['device_id']}/telemetry"
+            info = client.publish(topic, json.dumps(payload), qos=1)
+            info.wait_for_publish(timeout=5)
+            style = "bold red" if scenario.expected == "CRITICAL_HANDOFF" else "dim"
+            console.print(
+                f"[{style}]{scenario.name:<24} {payload['fsm_state']:<7} {payload['activity']:<8} "
+                f"bpm={payload['bpm']:<3} resp={payload['respiratory_rate']:<3} "
+                f"temp={payload['temperature']} -> attendu: {scenario.expected}[/{style}]"
             )
-            console.print("[dim]Envoyé: Métrique normale Collier A[/dim]")
-            producer.poll(0) # Déclenche les callbacks
-            time.sleep(1)
-
-        # Envoi de 1 donnée critique (Urgence)
-        critical_data = {
-            "recorded_at": datetime.now(UTC).isoformat(),
-            "anonymous_collar_id": COLLAR_B,
-            "bpm": 180,
-            "respiratory_rate": 60,
-            "temperature": 41.2
-        }
-        producer.produce(
-            KAFKA_TOPIC,
-            value=json.dumps(critical_data).encode('utf-8'),
-            callback=delivery_report
-        )
-        console.print("[bold red]Envoyé: Métrique CRITIQUE Collier B[/bold red]")
-        producer.poll(0)
-
-        # On attend que tout soit parti
-        producer.flush()
-        console.print("[green]Tous les messages ont été envoyés au tapis roulant ![/green]")
-
+            time.sleep(args.interval)
+        console.print("[green]Tous les payloads ont été publiés sur Mosquitto.[/green]")
     except KeyboardInterrupt:
         pass
-    except Exception as e:  # noqa: BLE001
-        console.print(f"[bold red]Erreur: {e}[/bold red]")
+    finally:
+        client.loop_stop()
+        client.disconnect()
+
 
 if __name__ == "__main__":
     main()
