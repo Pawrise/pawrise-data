@@ -25,7 +25,8 @@ def get_latest_metric(cur, collar_id: str) -> DogMetric:
     """Récupère la toute dernière métrique enregistrée pour un collier."""
     # On utilise l'index sur (anonymous_collar_id, recorded_at DESC)
     cur.execute("""
-        SELECT recorded_at, anonymous_collar_id, bpm, respiratory_rate, temperature 
+        SELECT recorded_at, anonymous_collar_id, bpm, respiratory_rate, temperature,
+               activity, fsm_state, weight_kg, age_months, breed_size
         FROM dog_metrics 
         WHERE anonymous_collar_id = %s 
         ORDER BY recorded_at DESC 
@@ -37,13 +38,18 @@ def get_latest_metric(cur, collar_id: str) -> DogMetric:
         raise ValueError(f"Aucune métrique trouvée pour le collier {collar_id}")
         
     # Mapping vers notre modèle Pydantic
-    return DogMetric(
-        recorded_at=row[0],
-        anonymous_collar_id=row[1],
-        bpm=row[2],
-        respiratory_rate=row[3],
-        temperature=row[4]
-    )
+    return DogMetric.model_validate({
+        "recorded_at": row[0],
+        "anonymous_collar_id": row[1],
+        "bpm": row[2],
+        "respiratory_rate": row[3],
+        "temperature": row[4],
+        "activity": row[5],
+        "fsm_state": row[6],
+        "weight_kg": row[7],
+        "age_months": row[8],
+        "breed_size": row[9],
+    })
 
 def main():
     console.print("\n[bold cyan]Pawrise Care - Test de l'Intercepteur de Red Flags[/bold cyan]\n")

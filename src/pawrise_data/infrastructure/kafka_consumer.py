@@ -107,7 +107,10 @@ class MetricsConsumer:
             self.consumer.commit(asynchronous=False)
             self._pending_commit = False
 
-    def _handle_message(self, raw: bytes) -> None:
+    def _handle_message(self, raw: bytes | None) -> None:
+        if raw is None:
+            self._send_to_dlq(raw, "invalid_message: empty payload")
+            return
         try:
             # 1. Parsing du colis brut puis vérification de la forme (Pydantic)
             metric = DogMetric.model_validate(json.loads(raw.decode('utf-8')))
@@ -141,16 +144,17 @@ class MetricsConsumer:
                 msg = self.consumer.poll(POLL_TIMEOUT)
 
                 if msg is not None:
-                    if msg.error():
-                        if msg.error().code() == KafkaError._PARTITION_EOF:
+                    err = msg.error()
+                    if err is not None:
+                        if err.code() == KafkaError._PARTITION_EOF:
                             # Fin de partition, on ignore
                             pass
-                        elif msg.error().code() == KafkaError.UNKNOWN_TOPIC_OR_PART:
+                        elif err.code() == KafkaError.UNKNOWN_TOPIC_OR_PART:
                             # Le topic n'existe pas encore
                             console.print("[dim]Le topic n'existe pas encore, en attente du premier message...[/dim]")
                             time.sleep(2)
                         else:
-                            console.print(f"[red]Erreur Kafka : {msg.error()}[/red]")
+                            console.print(f"[red]Erreur Kafka : {err}[/red]")
                             break
                     else:
                         self._handle_message(msg.value())

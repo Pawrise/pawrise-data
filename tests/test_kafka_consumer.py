@@ -78,3 +78,11 @@ def test_db_failure_redirects_batch_to_dlq(consumer, make_metric):
 def test_flush_without_pending_commit_does_not_commit(consumer):
     consumer._flush_batch()
     consumer.consumer.commit.assert_not_called()
+
+
+def test_empty_payload_goes_to_dlq(consumer):
+    consumer._handle_message(None)
+    assert consumer._batch == []
+    args, kwargs = consumer.producer.produce.call_args
+    assert args[0] == consumer.dlq_topic
+    assert kwargs["headers"]["error"].startswith(b"invalid_message")
