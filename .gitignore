@@ -25,3 +25,6 @@ venv.bak/
 
 # Context
 CONTEXT.md
+.claudeignore
+CLAUDE.md
+.claude
