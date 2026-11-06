@@ -1,3 +1,5 @@
+"""Tests du pont MQTT -> Kafka (brokers simulés) : validation, enrichissement et moyenne mobile."""
+
 import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -17,6 +19,7 @@ from pawrise_data.infrastructure.mqtt_ingestion import (
 
 @pytest.fixture
 def bridge():
+    """Fournit un pont dont MQTT et Kafka sont simulés."""
     with patch.object(mqtt_ingestion, "Producer") as producer, patch.object(mqtt_ingestion.mqtt, "Client"):
         b = MqttToKafkaBridge()
         b._producer = producer.return_value
@@ -24,10 +27,12 @@ def bridge():
 
 
 def _msg(payload: bytes, topic: str = "pawrise/x/telemetry"):
+    """Fabrique un faux message MQTT."""
     return SimpleNamespace(payload=payload, topic=topic)
 
 
 def _payload(**overrides):
+    """Fabrique un message collier valide (modifiable champ par champ)."""
     data = {
         "device_id": str(uuid4()),
         "temperature": 38.6,
@@ -41,11 +46,13 @@ def _payload(**overrides):
 
 
 def test_mock_enrich_is_deterministic():
+    """Un même collier reçoit toujours le même profil (poids, âge, race)."""
     collar = CollarPayload.model_validate(json.loads(_payload()))
     assert mock_enrich(collar) == mock_enrich(collar)
 
 
 def test_mock_enrich_respects_contract():
+    """Le profil généré respecte toujours le contrat de données (poids > 0, âge >= 0, race valide)."""
     for _ in range(50):
         collar = CollarPayload.model_validate(json.loads(_payload()))
         data = mock_enrich(collar)
@@ -55,11 +62,13 @@ def test_mock_enrich_respects_contract():
 
 
 def test_collar_payload_rejects_bad_activity():
+    """Une activité inconnue envoyée par le collier est refusée."""
     with pytest.raises(ValidationError):
         CollarPayload.model_validate(json.loads(_payload(activity="FLYING")))
 
 
 def test_enriched_metric_rejects_bad_breed_size():
+    """Une taille de race inconnue est refusée."""
     with pytest.raises(ValidationError):
         EnrichedMetric.model_validate(
             {
@@ -76,6 +85,7 @@ def test_enriched_metric_rejects_bad_breed_size():
 
 
 def test_valid_message_is_published_to_kafka(bridge):
+    """Un message valide part dans Kafka, enrichi et anonymisé (plus de device_id)."""
     bridge._on_message(None, None, _msg(_payload()))
     bridge._producer.produce.assert_called_once()
     kwargs = bridge._producer.produce.call_args.kwargs
@@ -90,29 +100,34 @@ def test_valid_message_is_published_to_kafka(bridge):
     [b"not json", b"\xff\xfe", b"{}", _payload(activity="FLYING"), _payload(temperature="hot")],
 )
 def test_invalid_message_is_rejected(bridge, raw):
+    """Un message invalide est écarté et n'est pas envoyé dans Kafka."""
     bridge._on_message(None, None, _msg(raw))
     bridge._producer.produce.assert_not_called()
 
 
 def test_on_connect_subscribes(bridge):
+    """Connexion MQTT réussie : le pont s'abonne aux colliers."""
     client = MagicMock()
     bridge._on_connect(client, None, None, SimpleNamespace(is_failure=False))
     client.subscribe.assert_called_once_with(mqtt_ingestion.MQTT_TOPIC, qos=1)
 
 
 def test_on_connect_failure_does_not_subscribe(bridge):
+    """Connexion refusée : pas d'abonnement."""
     client = MagicMock()
     bridge._on_connect(client, None, None, SimpleNamespace(is_failure=True))
     client.subscribe.assert_not_called()
 
 
 def _collar(device_id, bpm):
+    """Fabrique un message collier avec un bpm donné."""
     return mqtt_ingestion.CollarPayload.model_validate(
         {"device_id": device_id, "temperature": 38.6, "activity": "REST", "fsm_state": "REST", "bpm": bpm}
     )
 
 
 def test_bpm_moving_avg_sliding_window(bridge):
+    """La moyenne mobile ne garde que les derniers bpm (fenêtre glissante)."""
     dev = uuid4()
     window = mqtt_ingestion.BPM_WINDOW_SIZE
     values = list(range(100, 100 + window + 2))
@@ -122,16 +137,19 @@ def test_bpm_moving_avg_sliding_window(bridge):
 
 
 def test_bpm_moving_avg_isolated_per_collar(bridge):
+    """Chaque collier a sa propre moyenne : les chiens ne se mélangent pas."""
     a, b = uuid4(), uuid4()
     bridge._bpm_moving_avg(_collar(a, 200))
     assert bridge._bpm_moving_avg(_collar(b, 80)) == 80.0
 
 
 def test_bpm_moving_avg_none_when_bpm_missing(bridge):
+    """Sans bpm, il n'y a pas de moyenne."""
     assert bridge._bpm_moving_avg(_collar(uuid4(), None)) is None
 
 
 def test_bpm_windows_are_bounded(bridge, monkeypatch):
+    """La mémoire des moyennes est plafonnée : les colliers les plus anciens sont oubliés."""
     monkeypatch.setattr(mqtt_ingestion, "MAX_TRACKED_COLLARS", 3)
     for _ in range(10):
         bridge._bpm_moving_avg(_collar(uuid4(), 90))
@@ -139,6 +157,7 @@ def test_bpm_windows_are_bounded(bridge, monkeypatch):
 
 
 def test_published_payload_contains_moving_avg(bridge):
+    """Le message envoyé dans Kafka contient la moyenne mobile."""
     bridge._on_message(None, None, _msg(_payload()))
     sent = json.loads(bridge._producer.produce.call_args.kwargs["value"])
     assert sent["bpm_moving_avg"] == 90.0

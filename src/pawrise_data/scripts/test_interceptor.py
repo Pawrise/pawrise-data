@@ -1,3 +1,5 @@
+"""Démo manuelle du garde-fou : relit les dernières mesures en base et affiche la décision (NORMAL ou urgence)."""
+
 import os
 
 import psycopg
@@ -52,6 +54,7 @@ def get_latest_metric(cur, collar_id: str) -> DogMetric:
     })
 
 def main():
+    """Affiche, pour deux colliers de test, la dernière mesure, la décision du garde-fou et l'action qui en découle."""
     console.print("\n[bold cyan]Pawrise Care - Test de l'Intercepteur de Red Flags[/bold cyan]\n")
     
     try:

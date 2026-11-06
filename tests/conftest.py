@@ -1,3 +1,5 @@
+"""Outils partagés par les tests."""
+
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -9,7 +11,9 @@ from pawrise_data.domain.models import DogMetric
 
 @pytest.fixture
 def make_metric():
+    """Fournit une fabrique de mesures valides (chien sain par défaut) ; on ne change que les champs voulus."""
     def _make(**overrides: Any) -> DogMetric:
+        """Construit une mesure en appliquant les valeurs personnalisées par-dessus les valeurs saines."""
         data: dict[str, Any] = {
             "anonymous_collar_id": uuid4(),
             "recorded_at": datetime.now(UTC),

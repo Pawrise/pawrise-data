@@ -1,3 +1,5 @@
+"""Garde-fou déterministe : compare les constantes vitales à des seuils fixes pour détecter une urgence."""
+
 from typing import ClassVar
 
 from pawrise_data.domain.models import (
@@ -37,6 +39,7 @@ class AnomalyDetector:
 
     @classmethod
     def _is_under_effort(cls, metric: DogMetric) -> bool:
+        """Vrai si le chien est en effort (course, agitation, fugue) : ses seuils d'alerte sont alors relevés."""
         return metric.activity in cls.EFFORT_ACTIVITIES or metric.fsm_state in cls.EFFORT_FSM_STATES
 
     @classmethod

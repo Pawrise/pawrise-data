@@ -24,6 +24,7 @@ console = Console()
 
 
 def main() -> None:
+    """Lit les options, se connecte à MQTT et publie les scénarios de test choisis, avec un délai entre chaque message."""
     parser = argparse.ArgumentParser(description="Mock collier -> MQTT")
     parser.add_argument(
         "--scenario",
