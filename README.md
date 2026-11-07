@@ -237,6 +237,19 @@ Vérifier l'agrégat journalier :
 docker exec pawrise-postgres psql -U pawrise -d pawrise_care -c "CALL refresh_continuous_aggregate('daily_dog_metrics', NULL, NULL); SELECT * FROM daily_dog_metrics LIMIT 5;"
 ```
 
+### 6. Monitoring (Prometheus + Grafana)
+
+Le consumer expose ses métriques de santé sur `http://localhost:8000/metrics` (variable `METRICS_PORT`). Prometheus les collecte toutes les 15 s, Grafana les affiche.
+
+| Service | URL | Identifiants par défaut |
+|---|---|---|
+| Prometheus | http://localhost:9090 | - |
+| Grafana | http://localhost:3000 | `admin` / `admin` (`GRAFANA_USER`, `GRAFANA_PASSWORD`) |
+
+Métriques : `pawrise_messages_inserted_total`, `pawrise_messages_dlq_total`, `pawrise_critical_alerts_total`, `pawrise_batch_flush_seconds`, `pawrise_consumer_lag`.
+
+Grafana est provisionné automatiquement avec deux sources (Prometheus et TimescaleDB) et le dashboard « Pawrise - Santé du pipeline ». Le consumer tourne sur l'hôte : Prometheus le joint via `host.docker.internal:8000`.
+
 ### Tests
 
 ```bash
