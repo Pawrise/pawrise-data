@@ -15,6 +15,7 @@ dependencies = [
     "cohere>=4.45",
     "openai>=1.10.0",
     "rich>=13.0.0",
+    "prometheus-client>=0.26.0",
 ]
 
 [build-system]

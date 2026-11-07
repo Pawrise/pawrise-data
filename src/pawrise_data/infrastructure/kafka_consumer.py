@@ -10,6 +10,7 @@ from confluent_kafka import Consumer, KafkaError, Producer
 from rich.console import Console
 
 from pawrise_data.domain.models import DogMetric, RoutingDecision
+from pawrise_data.infrastructure import metrics as prom
 from pawrise_data.infrastructure.db_repository import DatabaseRepository
 from pawrise_data.services.anomaly_detector import AnomalyDetector
 
@@ -77,6 +78,7 @@ class MetricsConsumer:
     def _send_to_dlq(self, raw: bytes | None, reason: str) -> None:
         """Envoie un message inexploitable dans la DLQ (file des erreurs), avec la raison, pour ne rien perdre."""
         self._dlq_count += 1
+        prom.MESSAGES_DLQ.inc()
         self.producer.produce(
             self.dlq_topic,
             value=raw,
@@ -86,6 +88,7 @@ class MetricsConsumer:
 
     def _publish_alert(self, metric: DogMetric) -> None:
         """Publie une urgence (CRITICAL_HANDOFF) sur le topic des alertes critiques."""
+        prom.CRITICAL_ALERTS.inc()
         payload = {
             'decision': RoutingDecision.CRITICAL_HANDOFF.value,
             'metric': metric.model_dump(mode='json'),
@@ -112,6 +115,9 @@ class MetricsConsumer:
                 for _, raw in self._batch:
                     self._send_to_dlq(raw, f"db_error: {e}")
             elapsed = time.perf_counter() - start
+            if inserted:
+                prom.MESSAGES_INSERTED.inc(inserted)
+                prom.BATCH_FLUSH_SECONDS.observe(elapsed)
             logger.info(
                 "Lot traité : %d message(s) inséré(s) en %.3f s (%.1f ms) | %d message(s) envoyé(s) en DLQ",
                 inserted,
@@ -132,6 +138,23 @@ class MetricsConsumer:
             self.producer.flush(5.0)
             self.consumer.commit(asynchronous=False)
             self._pending_commit = False
+            self._update_lag()
+
+    def _update_lag(self) -> None:
+        """Met à jour la jauge de lag (messages restant à lire, toutes partitions assignées)."""
+        try:
+            lag = 0
+            for tp in self.consumer.assignment():
+                _, high = self.consumer.get_watermark_offsets(tp, timeout=1.0, cached=True)
+                pos = next(
+                    (p.offset for p in self.consumer.position([tp]) if p.offset >= 0),
+                    None,
+                )
+                if pos is not None:
+                    lag += max(high - pos, 0)
+            prom.CONSUMER_LAG.set(lag)
+        except Exception:  # noqa: BLE001
+            logger.debug("Calcul du lag impossible", exc_info=True)
 
     def _handle_message(self, raw: bytes | None) -> None:
         """Traite un message : l'invalide va à la DLQ, l'urgent déclenche une alerte, le normal rejoint le lot à archiver."""
@@ -211,6 +234,7 @@ if __name__ == "__main__":
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+    prom.start_metrics_server()
     db_repository = DatabaseRepository(dsn=DSN)
 
     metrics_consumer = MetricsConsumer(
