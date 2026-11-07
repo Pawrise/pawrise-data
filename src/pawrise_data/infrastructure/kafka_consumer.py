@@ -1,6 +1,7 @@
 """Consommateur Kafka : lit les mesures, déclenche les alertes urgentes et archive les mesures normales en base."""
 
 import json
+import logging
 import os
 import signal
 import time
@@ -11,6 +12,8 @@ from rich.console import Console
 from pawrise_data.domain.models import DogMetric, RoutingDecision
 from pawrise_data.infrastructure.db_repository import DatabaseRepository
 from pawrise_data.services.anomaly_detector import AnomalyDetector
+
+logger = logging.getLogger(__name__)
 
 console = Console()
 
@@ -69,9 +72,11 @@ class MetricsConsumer:
         self._batch: list[tuple[DogMetric, bytes]] = []
         self._batch_started_at = 0.0
         self._pending_commit = False
+        self._dlq_count = 0
 
     def _send_to_dlq(self, raw: bytes | None, reason: str) -> None:
         """Envoie un message inexploitable dans la DLQ (file des erreurs), avec la raison, pour ne rien perdre."""
+        self._dlq_count += 1
         self.producer.produce(
             self.dlq_topic,
             value=raw,
@@ -96,14 +101,32 @@ class MetricsConsumer:
         """Persiste le lot courant, puis commit les offsets."""
         if self._batch:
             metrics = [m for m, _ in self._batch]
+            inserted = 0
+            start = time.perf_counter()
             try:
                 self.db_repo.save_metrics_batch(metrics)
+                inserted = len(metrics)
                 console.print(f"[green]✅ Lot de {len(metrics)} données normales stockées.[/green]")
             except Exception as e:  # noqa: BLE001
                 console.print(f"[red]❌ Échec du bulk insert, lot redirigé vers la DLQ : {e}[/red]")
                 for _, raw in self._batch:
                     self._send_to_dlq(raw, f"db_error: {e}")
+            elapsed = time.perf_counter() - start
+            logger.info(
+                "Lot traité : %d message(s) inséré(s) en %.3f s (%.1f ms) | %d message(s) envoyé(s) en DLQ",
+                inserted,
+                elapsed,
+                elapsed * 1000,
+                self._dlq_count,
+            )
+            self._dlq_count = 0
             self._batch = []
+        elif self._dlq_count:
+            logger.info(
+                "Lot traité : 0 message(s) inséré(s) | %d message(s) envoyé(s) en DLQ",
+                self._dlq_count,
+            )
+            self._dlq_count = 0
 
         if self._pending_commit:
             self.producer.flush(5.0)
@@ -183,6 +206,11 @@ class MetricsConsumer:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
     db_repository = DatabaseRepository(dsn=DSN)
 
     metrics_consumer = MetricsConsumer(

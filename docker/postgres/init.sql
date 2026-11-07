@@ -35,6 +35,34 @@ ALTER TABLE dog_metrics SET (
 SELECT add_compression_policy('dog_metrics', INTERVAL '7 days', if_not_exists => TRUE);
 SELECT add_retention_policy('dog_metrics', INTERVAL '90 days', if_not_exists => TRUE);
 
+-- 3c. Agrégat continu journalier (optimisation des requêtes de graphiques Backend)
+CREATE MATERIALIZED VIEW IF NOT EXISTS daily_dog_metrics
+WITH (timescaledb.continuous) AS
+SELECT
+    anonymous_collar_id,
+    time_bucket('1 day', recorded_at) AS bucket,
+    AVG(bpm) AS avg_bpm,
+    MIN(bpm) AS min_bpm,
+    MAX(bpm) AS max_bpm,
+    AVG(respiratory_rate) AS avg_respiratory_rate,
+    MIN(respiratory_rate) AS min_respiratory_rate,
+    MAX(respiratory_rate) AS max_respiratory_rate,
+    AVG(temperature) AS avg_temperature,
+    MIN(temperature) AS min_temperature,
+    MAX(temperature) AS max_temperature
+FROM dog_metrics
+GROUP BY anonymous_collar_id, time_bucket('1 day', recorded_at)
+WITH NO DATA;
+
+-- Rafraîchissement automatique chaque nuit (fenêtre : 3 jours -> 1 heure)
+SELECT add_continuous_aggregate_policy(
+    'daily_dog_metrics',
+    start_offset => INTERVAL '3 days',
+    end_offset => INTERVAL '1 hour',
+    schedule_interval => INTERVAL '1 day',
+    if_not_exists => TRUE
+);
+
 -- 4. Index optimisé pour nos services métier (Handoff) et RAG
 CREATE INDEX IF NOT EXISTS ix_dog_metrics_collar_time 
 ON dog_metrics (anonymous_collar_id, recorded_at DESC);
