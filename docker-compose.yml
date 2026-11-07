@@ -13,6 +13,8 @@ services:
     volumes:
       - pawrise-db-data:/var/lib/postgresql/data
       - ./docker/postgres:/docker-entrypoint-initdb.d
+    networks:
+      - pawrise_network
     restart: unless-stopped
 
   kafka:
@@ -40,6 +42,20 @@ services:
     volumes:
       - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     restart: unless-stopped
+
+  adminer:
+    image: adminer:latest
+    container_name: pawrise-adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    networks:
+      - pawrise_network
+    restart: unless-stopped
+
+networks:
+  pawrise_network:
 
 volumes:
   pawrise-db-data:
