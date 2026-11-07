@@ -54,8 +54,46 @@ services:
       - pawrise_network
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: pawrise-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - pawrise-prometheus-data:/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - pawrise_network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: pawrise-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      DB_USER: ${DB_USER:-pawrise}
+      DB_PASSWORD: ${DB_PASSWORD:-pawrise123}
+      DB_NAME: ${DB_NAME:-pawrise_care}
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - pawrise-grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - postgres
+    networks:
+      - pawrise_network
+    restart: unless-stopped
+
 networks:
   pawrise_network:
 
 volumes:
   pawrise-db-data:
+  pawrise-prometheus-data:
+  pawrise-grafana-data:

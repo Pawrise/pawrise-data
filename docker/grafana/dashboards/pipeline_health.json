@@ -1,0 +1,50 @@
+{
+  "uid": "pawrise-pipeline",
+  "title": "Pawrise - Santé du pipeline",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Débit d'insertion (msg/s)",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "rate(pawrise_messages_inserted_total[1m])", "legendFormat": "insérés" }]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Lag du consumer (messages en attente)",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "pawrise_consumer_lag", "legendFormat": "lag" }]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Messages en DLQ (total)",
+      "gridPos": { "x": 0, "y": 8, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "pawrise_messages_dlq_total" }]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Alertes critiques (total)",
+      "gridPos": { "x": 6, "y": 8, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "pawrise_critical_alerts_total" }]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Durée d'insertion d'un lot (p95)",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "histogram_quantile(0.95, rate(pawrise_batch_flush_seconds_bucket[5m]))", "legendFormat": "p95" }]
+    },
+    {
+      "id": 6, "type": "stat", "title": "Consumer en ligne",
+      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 3 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "refId": "A", "expr": "up{job=\"pawrise-consumer\"}" }],
+      "fieldConfig": { "defaults": { "mappings": [
+        { "type": "value", "options": { "0": { "text": "HORS LIGNE", "color": "red" }, "1": { "text": "EN LIGNE", "color": "green" } } }
+      ] }, "overrides": [] }
+    }
+  ]
+}
