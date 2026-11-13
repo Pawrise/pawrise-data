@@ -16,6 +16,8 @@ from confluent_kafka import Producer
 from pydantic import BaseModel, Field, ValidationError
 from rich.console import Console
 
+from pawrise_data.infrastructure import bridge_metrics as prom
+
 console = Console()
 
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
@@ -102,6 +104,7 @@ class MqttToKafkaBridge:
     def _delivery_report(err: Any, msg: Any) -> None:
         """Appelé par Kafka après l'envoi : signale un échec de livraison."""
         if err is not None:
+            prom.KAFKA_DELIVERY_ERRORS.inc()
             console.print(f"[red]Échec de livraison Kafka: {err}[/red]")
 
     def _on_connect(
@@ -121,6 +124,7 @@ class MqttToKafkaBridge:
 
     def _on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
         """Traite un message collier : le valide, l'enrichit (profil + bpm lissé) puis le publie dans Kafka. Un message invalide est écarté."""
+        prom.MQTT_RECEIVED.inc()
         try:
             collar = CollarPayload.model_validate(json.loads(msg.payload.decode("utf-8")))
             metric = EnrichedMetric.model_validate(
@@ -137,6 +141,7 @@ class MqttToKafkaBridge:
                 }
             )
         except (json.JSONDecodeError, UnicodeDecodeError, ValidationError) as exc:
+            prom.MQTT_REJECTED.inc()
             console.print(f"[yellow]Message rejeté sur {msg.topic}: {exc}[/yellow]")
             return
 
@@ -147,12 +152,15 @@ class MqttToKafkaBridge:
             callback=self._delivery_report,
         )
         self._producer.poll(0)
+        prom.MQTT_PUBLISHED.inc()
+        prom.TRACKED_COLLARS.set(len(self._bpm_windows))
         console.print(f"[dim]{msg.topic} -> {KAFKA_TOPIC} ({metric.anonymous_collar_id})[/dim]")
 
     def run(self) -> None:
         """Lance le pont jusqu'à Ctrl+C / SIGTERM, puis s'arrête proprement (envoi des messages en attente)."""
         signal.signal(signal.SIGINT, lambda *_: self._stop.set())
         signal.signal(signal.SIGTERM, lambda *_: self._stop.set())
+        prom.start_bridge_metrics_server()
         console.print(
             f"[bold cyan]Pawrise Care[/bold cyan] - MQTT ({MQTT_HOST}:{MQTT_PORT}) -> Kafka ({KAFKA_BROKER_URL})"
         )

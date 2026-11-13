@@ -1,0 +1,325 @@
+apiVersion: 1
+groups:
+- orgId: 1
+  name: pipeline
+  folder: Pawrise
+  interval: 1m
+  rules:
+  - uid: pw-consumer-down
+    title: Consumer hors ligne
+    condition: C
+    for: 1m
+    noDataState: Alerting
+    execErrState: Error
+    labels:
+      severity: critical
+    annotations:
+      summary: 'Le consumer Kafka ne répond plus : plus aucune donnée ni alerte n''est traitée.'
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        expr: up{job="pawrise-consumer"}
+        instant: true
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: lt
+            params:
+            - 1
+  - uid: pw-bridge-down
+    title: Pont MQTT hors ligne
+    condition: C
+    for: 1m
+    noDataState: Alerting
+    execErrState: Error
+    labels:
+      severity: critical
+    annotations:
+      summary: 'Le pont MQTT -> Kafka ne répond plus : les colliers ne sont plus ingérés.'
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        expr: up{job="pawrise-mqtt-bridge"}
+        instant: true
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: lt
+            params:
+            - 1
+  - uid: pw-lag-high
+    title: Lag du consumer élevé
+    condition: C
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    labels:
+      severity: warning
+    annotations:
+      summary: 'Plus de 1000 messages en attente : le consumer n''arrive plus à suivre le débit.'
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        expr: pawrise_consumer_lag
+        instant: true
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 1000
+  - uid: pw-dlq-growing
+    title: Messages en DLQ
+    condition: C
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    labels:
+      severity: warning
+    annotations:
+      summary: 'Des messages partent en DLQ : données invalides ou échec d''insertion en base.'
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        expr: increase(pawrise_messages_dlq_total[5m])
+        instant: true
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+  - uid: pw-ingestion-stalled
+    title: Ingestion arrêtée
+    condition: C
+    for: 5m
+    noDataState: Alerting
+    execErrState: Error
+    labels:
+      severity: critical
+    annotations:
+      summary: 'Aucun message collier reçu depuis 10 min : broker, réseau ou flotte à l''arrêt.'
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        expr: increase(pawrise_mqtt_messages_received_total[10m])
+        instant: true
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: lt
+            params:
+            - 1
+  - uid: pw-mqtt-reject-rate
+    title: Taux de rejet MQTT élevé
+    condition: C
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    labels:
+      severity: warning
+    annotations:
+      summary: 'Plus de 5 % des messages collier sont rejetés : format du firmware modifié ?'
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: prometheus
+      model:
+        refId: A
+        expr: 100 * increase(pawrise_mqtt_messages_rejected_total[10m]) / clamp_min(increase(pawrise_mqtt_messages_received_total[10m]),
+          1)
+        instant: true
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 5
+- orgId: 1
+  name: flotte
+  folder: Pawrise
+  interval: 1m
+  rules:
+  - uid: pw-silent-fleet
+    title: Colliers silencieux (% de la flotte)
+    condition: C
+    for: 5m
+    noDataState: OK
+    execErrState: Error
+    labels:
+      severity: critical
+    annotations:
+      summary: Plus de 20 % des colliers vus ces 24 h n'ont rien envoyé depuis 10 min.
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescaledb
+      model:
+        refId: A
+        format: table
+        editorMode: code
+        rawQuery: true
+        rawSql: "WITH seen AS (\n  SELECT anonymous_collar_id, MAX(recorded_at) AS last_seen FROM (\n    SELECT anonymous_collar_id,\
+          \ recorded_at FROM dog_metrics WHERE recorded_at > NOW() - INTERVAL '24 hours'\n    UNION ALL\n    SELECT anonymous_collar_id,\
+          \ recorded_at FROM critical_alerts WHERE recorded_at > NOW() - INTERVAL '24 hours'\n  ) s GROUP BY anonymous_collar_id\n\
+          )\nSELECT COALESCE(100.0 * COUNT(*) FILTER (WHERE last_seen < NOW() - INTERVAL '10 minutes') / NULLIF(COUNT(*),\
+          \ 0), 0) AS silent_pct FROM seen"
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 20
+  - uid: pw-alert-burst
+    title: Rafale d'alertes critiques
+    condition: C
+    for: 0s
+    noDataState: OK
+    execErrState: Error
+    labels:
+      severity: warning
+    annotations:
+      summary: 'Plus de 20 alertes critiques en 5 min sur la flotte : événement de masse ou seuil mal calibré.'
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 600
+        to: 0
+      datasourceUid: timescaledb
+      model:
+        refId: A
+        format: table
+        editorMode: code
+        rawQuery: true
+        rawSql: SELECT COUNT(*) AS alerts_5m FROM critical_alerts WHERE recorded_at > NOW() - INTERVAL '5 minutes'
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        refId: B
+        type: reduce
+        expression: A
+        reducer: last
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        refId: C
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 20

@@ -161,3 +161,30 @@ def test_published_payload_contains_moving_avg(bridge):
     bridge._on_message(None, None, _msg(_payload()))
     sent = json.loads(bridge._producer.produce.call_args.kwargs["value"])
     assert sent["bpm_moving_avg"] == 90.0
+
+
+def _counter(metric) -> float:
+    """Lit la valeur courante d'un compteur Prometheus."""
+    return metric._value.get()
+
+
+def test_bridge_metrics_count_received_published_and_rejected(bridge):
+    """Les compteurs Prometheus du pont suivent les messages reçus, publiés et rejetés."""
+    prom = mqtt_ingestion.prom
+    received, published, rejected = (
+        _counter(prom.MQTT_RECEIVED),
+        _counter(prom.MQTT_PUBLISHED),
+        _counter(prom.MQTT_REJECTED),
+    )
+    bridge._on_message(None, None, _msg(_payload()))
+    bridge._on_message(None, None, _msg(b"pas du json"))
+    assert _counter(prom.MQTT_RECEIVED) == received + 2
+    assert _counter(prom.MQTT_PUBLISHED) == published + 1
+    assert _counter(prom.MQTT_REJECTED) == rejected + 1
+
+
+def test_bridge_metrics_count_delivery_errors(bridge):
+    """Un échec de livraison Kafka incrémente le compteur d'erreurs."""
+    before = _counter(mqtt_ingestion.prom.KAFKA_DELIVERY_ERRORS)
+    MqttToKafkaBridge._delivery_report("boom", None)
+    assert _counter(mqtt_ingestion.prom.KAFKA_DELIVERY_ERRORS) == before + 1

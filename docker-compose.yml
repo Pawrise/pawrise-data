@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-pawrise123}
       POSTGRES_DB: ${DB_NAME:-pawrise_care}
     volumes:
-      - pawrise-db-data:/var/lib/postgresql/data
+      - pawrise-db-data:/home/postgres/pgdata
       - ./docker/postgres:/docker-entrypoint-initdb.d
     networks:
       - pawrise_network

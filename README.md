@@ -245,7 +245,7 @@ uv run python -m pawrise_data.scripts.test_interceptor
 Vérifier l'agrégat journalier :
 
 ```bash
-docker exec pawrise-postgres psql -U pawrise -d pawrise_care -c "CALL refresh_continuous_aggregate('daily_dog_metrics', NULL, NULL); SELECT * FROM daily_dog_metrics LIMIT 5;"
+docker exec pawrise-postgres psql -U pawrise -d pawrise_care -c "CALL refresh_continuous_aggregate('daily_dog_metrics', NULL, NULL);" -c "SELECT * FROM daily_dog_metrics LIMIT 5;""
 ```
 
 ### 6. Monitoring (Prometheus + Grafana)
@@ -259,7 +259,30 @@ Le consumer expose ses métriques de santé sur `http://localhost:8000/metrics` 
 
 Métriques : `pawrise_messages_inserted_total`, `pawrise_messages_dlq_total`, `pawrise_critical_alerts_total`, `pawrise_batch_flush_seconds`, `pawrise_consumer_lag`.
 
-Grafana est provisionné automatiquement avec deux sources (Prometheus et TimescaleDB) et le dashboard « Pawrise - Santé du pipeline ». Le consumer tourne sur l'hôte : Prometheus le joint via `host.docker.internal:8000`.
+Le pont MQTT expose aussi ses métriques sur `http://localhost:8001/metrics` (variable `BRIDGE_METRICS_PORT`) : `pawrise_mqtt_messages_received_total`, `pawrise_mqtt_messages_rejected_total`, `pawrise_mqtt_messages_published_total`, `pawrise_mqtt_kafka_delivery_errors_total`, `pawrise_mqtt_tracked_collars`.
+
+Grafana est provisionné automatiquement avec deux sources (Prometheus et TimescaleDB) et deux dashboards. Le consumer et le pont tournent sur l'hôte : Prometheus les joint via `host.docker.internal:8000` et `:8001`.
+
+**Surveiller des milliers de colliers : par exception, pas collier par collier.** Personne ne peut regarder chaque collier. Le monitoring répond donc à trois questions, dans cet ordre : le pipeline tourne-t-il, la flotte envoie-t-elle des données, quels colliers méritent un coup d'œil.
+
+| Dashboard | Source | Contenu |
+|---|---|---|
+| « Pawrise - Santé du pipeline » | Prometheus | débit, lag, DLQ, durée de lot, consumer en ligne |
+| « Pawrise - Flotte de colliers » | TimescaleDB | colliers actifs / silencieux (vus sur 24 h, rien depuis 10 min), part de la flotte silencieuse, alertes critiques par période, top 10 colliers en alerte, liste des colliers silencieux, dernières alertes. Pour un collier précis, coller son UUID dans la variable « Collier » : courbes BPM et température. |
+
+Règles d'alerte provisionnées (`docker/grafana/provisioning/alerting/rules.yml`, dossier « Pawrise ») :
+
+| Règle | Condition |
+|---|---|
+| Consumer hors ligne / Pont MQTT hors ligne | `up < 1` pendant 1 min |
+| Lag du consumer élevé | plus de 1000 messages en attente pendant 5 min |
+| Messages en DLQ | au moins un message en DLQ sur 5 min |
+| Ingestion arrêtée | aucun message collier reçu depuis 10 min |
+| Taux de rejet MQTT élevé | plus de 5 % de messages rejetés sur 10 min |
+| Colliers silencieux | plus de 20 % de la flotte (vue sur 24 h) muette depuis 10 min |
+| Rafale d'alertes critiques | plus de 20 alertes critiques en 5 min |
+
+Les règles s'affichent dans Grafana (Alerting). Pour être prévenu automatiquement (Discord, Slack, email), ajouter un point de contact dans Grafana > Alerting > Contact points puis l'associer à la politique de notification par défaut. Les seuils sont des valeurs de départ à ajuster avec le volume réel de la flotte.
 
 ### Tests
 
