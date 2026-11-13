@@ -2,6 +2,7 @@
 
 Nécessite la vraie stack (`docker compose up -d`). Skippé si elle est injoignable.
 """
+
 import json
 import os
 import socket
@@ -9,6 +10,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Iterator
+from pathlib import Path
 from uuid import UUID, uuid4
 
 import paho.mqtt.client as mqtt
@@ -17,7 +19,9 @@ import pytest
 
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
-KAFKA_HOST, _, KAFKA_PORT = os.getenv("KAFKA_BROKER_URL", "localhost:9092").partition(":")
+KAFKA_HOST, _, KAFKA_PORT = os.getenv("KAFKA_BROKER_URL", "localhost:9092").partition(
+    ":"
+)
 DSN = "postgresql://{u}:{p}@{h}:{port}/{n}".format(
     u=os.getenv("DB_USER", "pawrise"),
     p=os.getenv("DB_PASSWORD", "pawrise123"),
@@ -28,9 +32,34 @@ DSN = "postgresql://{u}:{p}@{h}:{port}/{n}".format(
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", "5432"))
 
+
+def _load_dotenv() -> None:
+    """Charge le .env racine sans écraser l'environnement (mêmes mots de passe que gen_passwd.sh)."""
+    env_file = Path(__file__).resolve().parent.parent / ".env"
+    if not env_file.is_file():
+        return
+    for line in env_file.read_text().splitlines():
+        key, sep, value = line.strip().partition("=")
+        if sep and key and not key.startswith("#"):
+            os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
+_load_dotenv()
+
+# Comptes MQTT (cf. docker/mosquitto/gen_passwd.sh) : `iot` publie, `bridge` lit.
+MQTT_IOT_PASSWORD = os.getenv("MQTT_IOT_PASSWORD", "iot-dev")
+MQTT_BRIDGE_PASSWORD = os.getenv("MQTT_BRIDGE_PASSWORD", "bridge-dev")
+
 TIMEOUT_S = 60.0
 
 pytestmark = pytest.mark.e2e
+
+
+def _free_port() -> int:
+    """Renvoie un port TCP libre, pour ne pas entrer en conflit avec un pipeline déjà lancé."""
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
 
 
 def _reachable(host: str, port: int) -> bool:
@@ -55,15 +84,25 @@ def stack() -> None:
         if not _reachable(host, port)
     ]
     if down:
-        pytest.skip(f"Stack Docker indisponible ({', '.join(down)}) : `docker compose up -d`")
+        pytest.skip(
+            f"Stack Docker indisponible ({', '.join(down)}) : `docker compose up -d`"
+        )
 
 
 @pytest.fixture
 def pipeline(stack: None) -> Iterator[None]:
     """Démarre les vrais entrypoints : pont MQTT->Kafka et consumer Kafka->DB."""
+    env = {
+        **os.environ,
+        "METRICS_PORT": str(_free_port()),
+        "BRIDGE_METRICS_PORT": str(_free_port()),
+        "MQTT_USERNAME": "bridge",
+        "MQTT_PASSWORD": MQTT_BRIDGE_PASSWORD,
+    }
     procs = [
         subprocess.Popen(
             [sys.executable, "-m", module],
+            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -75,7 +114,9 @@ def pipeline(stack: None) -> Iterator[None]:
     try:
         time.sleep(5)
         for p in procs:
-            assert p.poll() is None, "un processus du pipeline s'est arrêté au démarrage"
+            assert p.poll() is None, (
+                "un processus du pipeline s'est arrêté au démarrage"
+            )
         yield
     finally:
         for p in procs:
@@ -90,10 +131,13 @@ def pipeline(stack: None) -> Iterator[None]:
 def _publish(collar_id: UUID, payload: dict) -> None:
     """Publie un message collier sur MQTT, comme le ferait un vrai collier."""
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+    client.username_pw_set("iot", MQTT_IOT_PASSWORD)
     client.connect(MQTT_HOST, MQTT_PORT)
     client.loop_start()
     try:
-        info = client.publish(f"pawrise/{collar_id}/telemetry", json.dumps(payload), qos=1)
+        info = client.publish(
+            f"pawrise/{collar_id}/telemetry", json.dumps(payload), qos=1
+        )
         info.wait_for_publish(10)
     finally:
         client.loop_stop()
@@ -145,4 +189,6 @@ def test_mqtt_to_timescaledb_smoke(pipeline: None) -> None:
         assert breed in {"small", "medium", "large"}
     finally:
         with psycopg.connect(DSN, autocommit=True) as conn:
-            conn.execute("DELETE FROM dog_metrics WHERE anonymous_collar_id = %s", (collar_id,))
+            conn.execute(
+                "DELETE FROM dog_metrics WHERE anonymous_collar_id = %s", (collar_id,)
+            )

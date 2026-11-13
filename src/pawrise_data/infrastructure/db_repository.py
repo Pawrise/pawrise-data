@@ -30,10 +30,13 @@ class DatabaseRepository:
     Gère toutes les interactions avec notre base PostgreSQL / TimescaleDB
     via un pool de connexions partagé.
     """
+
     def __init__(self, dsn: str, min_size: int = 1, max_size: int = 5):
         """Ouvre un pool de connexions réutilisables vers la base."""
         self.dsn = dsn
-        self.pool = ConnectionPool(dsn, min_size=min_size, max_size=max_size, open=False)
+        self.pool = ConnectionPool(
+            dsn, min_size=min_size, max_size=max_size, open=False
+        )
         self.pool.open(wait=True)
 
     def close(self) -> None:

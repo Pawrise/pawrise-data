@@ -42,6 +42,7 @@ class MetricsConsumer:
     les range par lots dans la base ou déclenche une alerte.
     Les offsets sont commités manuellement après traitement du lot.
     """
+
     def __init__(
         self,
         broker: str,
@@ -61,13 +62,13 @@ class MetricsConsumer:
         self.flush_interval = flush_interval
 
         conf = {
-            'bootstrap.servers': broker,
-            'group.id': 'pawrise_data_group',
-            'auto.offset.reset': 'earliest',
-            'enable.auto.commit': False,
+            "bootstrap.servers": broker,
+            "group.id": "pawrise_data_group",
+            "auto.offset.reset": "earliest",
+            "enable.auto.commit": False,
         }
         self.consumer = Consumer(conf)
-        self.producer = Producer({'bootstrap.servers': broker})
+        self.producer = Producer({"bootstrap.servers": broker})
         self.running = False
 
         self._batch: list[tuple[DogMetric, bytes]] = []
@@ -82,7 +83,7 @@ class MetricsConsumer:
         self.producer.produce(
             self.dlq_topic,
             value=raw,
-            headers={'error': reason[:500].encode('utf-8')},
+            headers={"error": reason[:500].encode("utf-8")},
         )
         self.producer.poll(0)
 
@@ -90,13 +91,13 @@ class MetricsConsumer:
         """Publie une urgence (CRITICAL_HANDOFF) sur le topic des alertes critiques."""
         prom.CRITICAL_ALERTS.inc()
         payload = {
-            'decision': RoutingDecision.CRITICAL_HANDOFF.value,
-            'metric': metric.model_dump(mode='json'),
+            "decision": RoutingDecision.CRITICAL_HANDOFF.value,
+            "metric": metric.model_dump(mode="json"),
         }
         self.producer.produce(
             self.alerts_topic,
-            key=str(metric.anonymous_collar_id).encode('utf-8'),
-            value=json.dumps(payload).encode('utf-8'),
+            key=str(metric.anonymous_collar_id).encode("utf-8"),
+            value=json.dumps(payload).encode("utf-8"),
         )
         self.producer.poll(0)
 
@@ -105,7 +106,9 @@ class MetricsConsumer:
         try:
             self.db_repo.save_alert(metric)
         except Exception as e:  # noqa: BLE001
-            console.print(f"[red]❌ Alerte non enregistrée en base, message redirigé vers la DLQ : {e}[/red]")
+            console.print(
+                f"[red]❌ Alerte non enregistrée en base, message redirigé vers la DLQ : {e}[/red]"
+            )
             self._send_to_dlq(raw, f"alert_db_error: {e}")
 
     def _flush_batch(self) -> None:
@@ -117,9 +120,13 @@ class MetricsConsumer:
             try:
                 self.db_repo.save_metrics_batch(metrics)
                 inserted = len(metrics)
-                console.print(f"[green]✅ Lot de {len(metrics)} données normales stockées.[/green]")
+                console.print(
+                    f"[green]✅ Lot de {len(metrics)} données normales stockées.[/green]"
+                )
             except Exception as e:  # noqa: BLE001
-                console.print(f"[red]❌ Échec du bulk insert, lot redirigé vers la DLQ : {e}[/red]")
+                console.print(
+                    f"[red]❌ Échec du bulk insert, lot redirigé vers la DLQ : {e}[/red]"
+                )
                 for _, raw in self._batch:
                     self._send_to_dlq(raw, f"db_error: {e}")
             elapsed = time.perf_counter() - start
@@ -153,7 +160,9 @@ class MetricsConsumer:
         try:
             lag = 0
             for tp in self.consumer.assignment():
-                _, high = self.consumer.get_watermark_offsets(tp, timeout=1.0, cached=True)
+                _, high = self.consumer.get_watermark_offsets(
+                    tp, timeout=1.0, cached=True
+                )
                 pos = next(
                     (p.offset for p in self.consumer.position([tp]) if p.offset >= 0),
                     None,
@@ -161,7 +170,7 @@ class MetricsConsumer:
                 if pos is not None:
                     lag += max(high - pos, 0)
             prom.CONSUMER_LAG.set(lag)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.debug("Calcul du lag impossible", exc_info=True)
 
     def _handle_message(self, raw: bytes | None) -> None:
@@ -170,20 +179,28 @@ class MetricsConsumer:
             self._send_to_dlq(raw, "invalid_message: empty payload")
             return
         try:
-            metric = DogMetric.model_validate(json.loads(raw.decode('utf-8')))
+            metric = DogMetric.model_validate(json.loads(raw.decode("utf-8")))
         except Exception as e:  # noqa: BLE001
-            console.print(f"[yellow]⚠️ Colis malformé redirigé vers la DLQ : {e}[/yellow]")
+            console.print(
+                f"[yellow]⚠️ Colis malformé redirigé vers la DLQ : {e}[/yellow]"
+            )
             self._send_to_dlq(raw, f"invalid_message: {e}")
             return
 
         decision = AnomalyDetector.evaluate(metric)
 
         if decision == RoutingDecision.CRITICAL_HANDOFF:
-            console.print(f"[bold red blink]🚨 URGENCE DETECTEE (Collier {metric.anonymous_collar_id}) ![/bold red blink]")
-            console.print(f"[red]   -> BPM: {metric.bpm} | Resp: {metric.respiratory_rate} | Temp: {metric.temperature}°C[/red]")
+            console.print(
+                f"[bold red blink]🚨 URGENCE DETECTEE (Collier {metric.anonymous_collar_id}) ![/bold red blink]"
+            )
+            console.print(
+                f"[red]   -> BPM: {metric.bpm} | Resp: {metric.respiratory_rate} | Temp: {metric.temperature}°C[/red]"
+            )
             self._publish_alert(metric)
             self._persist_alert(metric, raw)
-            console.print(f"[red]   -> ACTION : IA Bloquée, alerte publiée sur '{self.alerts_topic}' et enregistrée en base.[/red]\n")
+            console.print(
+                f"[red]   -> ACTION : IA Bloquée, alerte publiée sur '{self.alerts_topic}' et enregistrée en base.[/red]\n"
+            )
         else:
             if not self._batch:
                 self._batch_started_at = time.monotonic()
@@ -193,8 +210,12 @@ class MetricsConsumer:
         """Boucle principale : lit les messages, archive par lots (taille ou délai atteint) et s'arrête proprement."""
         self.consumer.subscribe([self.topic])
         self.running = True
-        console.print(f"[bold cyan]Démarrage du Kafka Consumer sur le topic '{self.topic}'...[/bold cyan]")
-        console.print("[green]En attente de nouveaux colis... (Ctrl+C pour quitter)[/green]")
+        console.print(
+            f"[bold cyan]Démarrage du Kafka Consumer sur le topic '{self.topic}'...[/bold cyan]"
+        )
+        console.print(
+            "[green]En attente de nouveaux colis... (Ctrl+C pour quitter)[/green]"
+        )
 
         try:
             while self.running:
@@ -206,7 +227,9 @@ class MetricsConsumer:
                         if err.code() == KafkaError._PARTITION_EOF:
                             pass
                         elif err.code() == KafkaError.UNKNOWN_TOPIC_OR_PART:
-                            console.print("[dim]Le topic n'existe pas encore, en attente du premier message...[/dim]")
+                            console.print(
+                                "[dim]Le topic n'existe pas encore, en attente du premier message...[/dim]"
+                            )
                             time.sleep(2)
                         else:
                             console.print(f"[red]Erreur Kafka : {err}[/red]")
@@ -247,9 +270,7 @@ if __name__ == "__main__":
     db_repository = DatabaseRepository(dsn=DSN)
 
     metrics_consumer = MetricsConsumer(
-        broker=KAFKA_BROKER_URL,
-        topic=KAFKA_TOPIC,
-        db_repo=db_repository
+        broker=KAFKA_BROKER_URL, topic=KAFKA_TOPIC, db_repo=db_repository
     )
 
     def signal_handler(sig, frame):

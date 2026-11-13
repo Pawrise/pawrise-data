@@ -33,6 +33,7 @@ MAX_TRACKED_COLLARS = int(os.getenv("MAX_TRACKED_COLLARS", "10000"))
 
 class Activity(str, Enum):
     """Niveau d'activité du chien tel qu'envoyé par le collier."""
+
     REST = "REST"
     WALKING = "WALKING"
     RUNNING = "RUNNING"
@@ -41,6 +42,7 @@ class Activity(str, Enum):
 
 class CollarPayload(BaseModel):
     """Payload brut publié par le collier sur MQTT."""
+
     device_id: UUID
     temperature: float
     activity: Activity
@@ -51,6 +53,7 @@ class CollarPayload(BaseModel):
 
 class EnrichedMetric(BaseModel):
     """Data Contract publié sur `dog_metrics_topic` (Stream Enrichment)."""
+
     anonymous_collar_id: UUID
     recorded_at: datetime
     temperature: float
@@ -71,7 +74,11 @@ def mock_enrich(collar: CollarPayload) -> dict[str, Any]:
     """
     rng = random.Random(collar.device_id.int)
     breed_size = rng.choice(("small", "medium", "large"))
-    weight_range = {"small": (3.0, 10.0), "medium": (10.0, 25.0), "large": (25.0, 50.0)}[breed_size]
+    weight_range = {
+        "small": (3.0, 10.0),
+        "medium": (10.0, 25.0),
+        "large": (25.0, 50.0),
+    }[breed_size]
     return {
         "weight_kg": round(rng.uniform(*weight_range), 1),
         "age_months": rng.randint(2, 180),
@@ -97,7 +104,9 @@ class MqttToKafkaBridge:
         """Moyenne mobile du bpm par collier (état porté par l'ingestion, pas par le détecteur)."""
         if collar.bpm is None:
             return None
-        window = self._bpm_windows.setdefault(collar.device_id, deque(maxlen=BPM_WINDOW_SIZE))
+        window = self._bpm_windows.setdefault(
+            collar.device_id, deque(maxlen=BPM_WINDOW_SIZE)
+        )
         self._bpm_windows.move_to_end(collar.device_id)
         while len(self._bpm_windows) > MAX_TRACKED_COLLARS:
             self._bpm_windows.popitem(last=False)
@@ -126,11 +135,15 @@ class MqttToKafkaBridge:
         client.subscribe(MQTT_TOPIC, qos=1)
         console.print(f"[green]MQTT connecté, abonné à[/green] {MQTT_TOPIC}")
 
-    def _on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
+    def _on_message(
+        self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage
+    ) -> None:
         """Traite un message collier : le valide, l'enrichit (profil + bpm lissé) puis le publie dans Kafka. Un message invalide est écarté."""
         prom.MQTT_RECEIVED.inc()
         try:
-            collar = CollarPayload.model_validate(json.loads(msg.payload.decode("utf-8")))
+            collar = CollarPayload.model_validate(
+                json.loads(msg.payload.decode("utf-8"))
+            )
             metric = EnrichedMetric.model_validate(
                 {
                     "anonymous_collar_id": collar.device_id,
@@ -158,7 +171,9 @@ class MqttToKafkaBridge:
         self._producer.poll(0)
         prom.MQTT_PUBLISHED.inc()
         prom.TRACKED_COLLARS.set(len(self._bpm_windows))
-        console.print(f"[dim]{msg.topic} -> {KAFKA_TOPIC} ({metric.anonymous_collar_id})[/dim]")
+        console.print(
+            f"[dim]{msg.topic} -> {KAFKA_TOPIC} ({metric.anonymous_collar_id})[/dim]"
+        )
 
     def run(self) -> None:
         """Lance le pont jusqu'à Ctrl+C / SIGTERM, puis s'arrête proprement (envoi des messages en attente)."""

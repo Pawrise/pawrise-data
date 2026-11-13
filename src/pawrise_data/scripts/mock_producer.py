@@ -34,10 +34,14 @@ def main() -> None:
         choices=[s.name for s in SCENARIOS],
         help="Scénarios à jouer (défaut : tous, dans l'ordre)",
     )
-    parser.add_argument("--interval", type=float, default=1.0, help="Délai entre messages (s)")
+    parser.add_argument(
+        "--interval", type=float, default=1.0, help="Délai entre messages (s)"
+    )
     args = parser.parse_args()
 
-    console.print(f"[bold cyan]Pawrise Care[/bold cyan] - Mock Producer vers MQTT ({MQTT_HOST}:{MQTT_PORT})")
+    console.print(
+        f"[bold cyan]Pawrise Care[/bold cyan] - Mock Producer vers MQTT ({MQTT_HOST}:{MQTT_PORT})"
+    )
 
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     if MQTT_USERNAME:

@@ -30,3 +30,7 @@ CLAUDE.md
 .claude
 # Mosquitto : mots de passe hachés (générés par gen_passwd.sh)
 docker/mosquitto/passwd
+
+# Couverture
+htmlcov/
+.coverage

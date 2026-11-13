@@ -20,7 +20,10 @@ from pawrise_data.infrastructure.mqtt_ingestion import (
 @pytest.fixture
 def bridge():
     """Fournit un pont dont MQTT et Kafka sont simulés."""
-    with patch.object(mqtt_ingestion, "Producer") as producer, patch.object(mqtt_ingestion.mqtt, "Client"):
+    with (
+        patch.object(mqtt_ingestion, "Producer") as producer,
+        patch.object(mqtt_ingestion.mqtt, "Client"),
+    ):
         b = MqttToKafkaBridge()
         b._producer = producer.return_value
         yield b
@@ -90,14 +93,25 @@ def test_valid_message_is_published_to_kafka(bridge):
     bridge._producer.produce.assert_called_once()
     kwargs = bridge._producer.produce.call_args.kwargs
     body = json.loads(kwargs["value"])
-    assert {"anonymous_collar_id", "weight_kg", "age_months", "breed_size"} <= body.keys()
+    assert {
+        "anonymous_collar_id",
+        "weight_kg",
+        "age_months",
+        "breed_size",
+    } <= body.keys()
     assert "device_id" not in body
     assert kwargs["key"].decode() == body["anonymous_collar_id"]
 
 
 @pytest.mark.parametrize(
     "raw",
-    [b"not json", b"\xff\xfe", b"{}", _payload(activity="FLYING"), _payload(temperature="hot")],
+    [
+        b"not json",
+        b"\xff\xfe",
+        b"{}",
+        _payload(activity="FLYING"),
+        _payload(temperature="hot"),
+    ],
 )
 def test_invalid_message_is_rejected(bridge, raw):
     """Un message invalide est écarté et n'est pas envoyé dans Kafka."""
@@ -122,7 +136,13 @@ def test_on_connect_failure_does_not_subscribe(bridge):
 def _collar(device_id, bpm):
     """Fabrique un message collier avec un bpm donné."""
     return mqtt_ingestion.CollarPayload.model_validate(
-        {"device_id": device_id, "temperature": 38.6, "activity": "REST", "fsm_state": "REST", "bpm": bpm}
+        {
+            "device_id": device_id,
+            "temperature": 38.6,
+            "activity": "REST",
+            "fsm_state": "REST",
+            "bpm": bpm,
+        }
     )
 
 
@@ -211,3 +231,39 @@ def test_bridge_stays_anonymous_without_credentials():
     ):
         MqttToKafkaBridge()
     client.return_value.username_pw_set.assert_not_called()
+
+
+def test_run_starts_metrics_connects_and_shuts_down_cleanly(bridge):
+    """run() expose les métriques, connecte MQTT, puis s'arrête proprement sur demande."""
+    bridge._stop.set()
+    with (
+        patch.object(mqtt_ingestion.signal, "signal"),
+        patch.object(mqtt_ingestion.prom, "start_bridge_metrics_server") as metrics,
+    ):
+        bridge.run()
+    metrics.assert_called_once()
+    bridge._client.connect.assert_called_once()
+    bridge._client.loop_start.assert_called_once()
+    bridge._client.loop_stop.assert_called_once()
+    bridge._client.disconnect.assert_called_once()
+    bridge._producer.flush.assert_called_once_with(10)
+
+
+def test_run_signal_handlers_request_stop(bridge):
+    """Les signaux SIGINT/SIGTERM demandent l'arrêt du pont."""
+    bridge._stop.set()
+    with (
+        patch.object(mqtt_ingestion.signal, "signal") as sig,
+        patch.object(mqtt_ingestion.prom, "start_bridge_metrics_server"),
+    ):
+        bridge.run()
+    bridge._stop.clear()
+    sig.call_args_list[0].args[1]()
+    assert bridge._stop.is_set()
+
+
+def test_main_runs_the_bridge():
+    """main() construit le pont et le lance."""
+    with patch.object(mqtt_ingestion, "MqttToKafkaBridge") as bridge_cls:
+        mqtt_ingestion.main()
+    bridge_cls.return_value.run.assert_called_once()

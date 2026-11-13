@@ -71,7 +71,9 @@ def test_save_metric_executes_insert(repo, cursor, make_metric):
     """Enregistrer une mesure exécute un INSERT."""
     m = make_metric()
     repo.save_metric(m)
-    cursor.execute.assert_called_once_with(INSERT_METRIC_QUERY, DatabaseRepository._to_row(m))
+    cursor.execute.assert_called_once_with(
+        INSERT_METRIC_QUERY, DatabaseRepository._to_row(m)
+    )
 
 
 def test_save_metric_propagates_errors(repo, cursor, make_metric):
@@ -100,7 +102,9 @@ def test_save_alert_executes_idempotent_insert(repo, cursor, make_metric):
     """Une alerte est écrite dans critical_alerts, avec un INSERT qui ignore les doublons."""
     m = make_metric(respiratory_rate=100)
     repo.save_alert(m)
-    cursor.execute.assert_called_once_with(INSERT_ALERT_QUERY, DatabaseRepository._to_row(m))
+    cursor.execute.assert_called_once_with(
+        INSERT_ALERT_QUERY, DatabaseRepository._to_row(m)
+    )
     assert "critical_alerts" in INSERT_ALERT_QUERY
     assert "ON CONFLICT" in INSERT_ALERT_QUERY
 

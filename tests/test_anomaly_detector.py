@@ -23,7 +23,9 @@ def test_tachycardia_with_fever_is_critical(make_metric, size, limit):
     assert AnomalyDetector.evaluate(metric) == CRITICAL
 
 
-@pytest.mark.parametrize("size,limit", [("small", 170), ("medium", 150), ("large", 130)])
+@pytest.mark.parametrize(
+    "size,limit", [("small", 170), ("medium", 150), ("large", 130)]
+)
 def test_tachycardia_at_threshold_is_normal(make_metric, size, limit):
     """Un bpm pile au seuil n'est pas une urgence (le seuil est strict)."""
     metric = make_metric(breed_size=size, bpm=limit, temperature=40.5)
@@ -43,8 +45,16 @@ def test_fever_exactly_at_threshold_is_normal(make_metric):
 @pytest.mark.parametrize("size,limit", [("small", 50), ("medium", 45), ("large", 40)])
 def test_respiratory_distress_is_critical(make_metric, size, limit):
     """Une respiration trop rapide est une urgence ; pile au seuil, non."""
-    assert AnomalyDetector.evaluate(make_metric(breed_size=size, respiratory_rate=limit + 1)) == CRITICAL
-    assert AnomalyDetector.evaluate(make_metric(breed_size=size, respiratory_rate=limit)) == NORMAL
+    assert (
+        AnomalyDetector.evaluate(
+            make_metric(breed_size=size, respiratory_rate=limit + 1)
+        )
+        == CRITICAL
+    )
+    assert (
+        AnomalyDetector.evaluate(make_metric(breed_size=size, respiratory_rate=limit))
+        == NORMAL
+    )
 
 
 @pytest.mark.parametrize(
@@ -65,8 +75,14 @@ def test_effort_context_raises_thresholds(make_metric, overrides):
 
 def test_effort_resp_multiplier(make_metric):
     """En effort, la respiration tolérée double avant de déclencher l'urgence."""
-    assert AnomalyDetector.evaluate(make_metric(respiratory_rate=80, activity="RUNNING")) == NORMAL
-    assert AnomalyDetector.evaluate(make_metric(respiratory_rate=91, activity="RUNNING")) == CRITICAL
+    assert (
+        AnomalyDetector.evaluate(make_metric(respiratory_rate=80, activity="RUNNING"))
+        == NORMAL
+    )
+    assert (
+        AnomalyDetector.evaluate(make_metric(respiratory_rate=91, activity="RUNNING"))
+        == CRITICAL
+    )
 
 
 def test_effort_does_not_mask_extreme_values(make_metric):
@@ -77,7 +93,12 @@ def test_effort_does_not_mask_extreme_values(make_metric):
 
 def test_walking_is_not_effort(make_metric):
     """La marche ne compte pas comme un effort : les seuils restent ceux du repos."""
-    assert AnomalyDetector.evaluate(make_metric(bpm=160, temperature=40.5, activity="WALKING")) == CRITICAL
+    assert (
+        AnomalyDetector.evaluate(
+            make_metric(bpm=160, temperature=40.5, activity="WALKING")
+        )
+        == CRITICAL
+    )
 
 
 def test_evaluate_is_stateless(make_metric):

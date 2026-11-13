@@ -9,11 +9,14 @@ from pydantic import BaseModel, Field
 
 class RoutingDecision(str, Enum):
     """Décision de routage après analyse des règles métier."""
+
     NORMAL = "NORMAL"
     CRITICAL_HANDOFF = "CRITICAL_HANDOFF"
 
+
 class Activity(str, Enum):
     """Niveau d'activité remonté par le collier."""
+
     REST = "REST"
     WALKING = "WALKING"
     RUNNING = "RUNNING"
@@ -22,6 +25,7 @@ class Activity(str, Enum):
 
 class FsmState(str, Enum):
     """États de la machine à états du collier (contrat IoT)."""
+
     BOOT = "BOOT"
     PAIRING = "PAIRING"
     REST = "REST"
@@ -35,6 +39,7 @@ class FsmState(str, Enum):
 
 class BreedSize(str, Enum):
     """Catégorie de taille de race (enrichissement stream)."""
+
     SMALL = "small"
     MEDIUM = "medium"
     LARGE = "large"
@@ -45,6 +50,7 @@ class DogMetric(BaseModel):
 
     `bpm_moving_avg` (optionnel) est le bpm lissé, calculé en amont par l'ingestion.
     """
+
     anonymous_collar_id: UUID
     recorded_at: datetime
     bpm: int = Field(ge=20, le=400)

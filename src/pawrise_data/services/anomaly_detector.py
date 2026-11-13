@@ -33,7 +33,9 @@ class AnomalyDetector:
     }
     CRITICAL_TEMP_THRESHOLD = 40.0
 
-    EFFORT_ACTIVITIES: frozenset[Activity] = frozenset({Activity.RUNNING, Activity.AGITATED})
+    EFFORT_ACTIVITIES: frozenset[Activity] = frozenset(
+        {Activity.RUNNING, Activity.AGITATED}
+    )
     EFFORT_FSM_STATES: frozenset[FsmState] = frozenset({FsmState.ESCAPE})
     EFFORT_BPM_MULTIPLIER = 1.35
     EFFORT_RESP_MULTIPLIER = 2.0
@@ -41,7 +43,10 @@ class AnomalyDetector:
     @classmethod
     def _is_under_effort(cls, metric: DogMetric) -> bool:
         """Vrai si le chien est en effort (course, agitation, fugue) : ses seuils d'alerte sont alors relevés."""
-        return metric.activity in cls.EFFORT_ACTIVITIES or metric.fsm_state in cls.EFFORT_FSM_STATES
+        return (
+            metric.activity in cls.EFFORT_ACTIVITIES
+            or metric.fsm_state in cls.EFFORT_FSM_STATES
+        )
 
     @classmethod
     def _thresholds(cls, metric: DogMetric) -> tuple[float, float]:
@@ -68,7 +73,10 @@ class AnomalyDetector:
         bpm_threshold, resp_threshold = cls._thresholds(metric)
 
         bpm_value = max(metric.bpm, metric.bpm_moving_avg or 0.0)
-        if bpm_value > bpm_threshold and metric.temperature > cls.CRITICAL_TEMP_THRESHOLD:
+        if (
+            bpm_value > bpm_threshold
+            and metric.temperature > cls.CRITICAL_TEMP_THRESHOLD
+        ):
             return RoutingDecision.CRITICAL_HANDOFF
 
         if metric.respiratory_rate > resp_threshold:

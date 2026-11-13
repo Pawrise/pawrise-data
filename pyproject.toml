@@ -19,9 +19,25 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
-dev = ["pytest>=8.0.0"]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.5",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
 markers = ["e2e: test de bout en bout nécessitant la stack Docker (docker compose up -d)"]
+
+[tool.coverage.run]
+source = ["pawrise_data"]
+branch = false
+# Mesure aussi les sous-processus lancés par le test e2e (pont MQTT et consumer).
+patch = ["subprocess"]
+sigterm = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_empty = true

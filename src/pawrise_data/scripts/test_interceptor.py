@@ -21,37 +21,46 @@ COLLAR_B = "22222222-2222-2222-2222-222222222222"
 
 console = Console()
 
+
 def get_latest_metric(cur, collar_id: str) -> DogMetric:
     """Récupère la toute dernière métrique enregistrée pour un collier."""
-    cur.execute("""
+    cur.execute(
+        """
         SELECT recorded_at, anonymous_collar_id, bpm, respiratory_rate, temperature,
                activity, fsm_state, weight_kg, age_months, breed_size
         FROM dog_metrics
         WHERE anonymous_collar_id = %s
         ORDER BY recorded_at DESC
         LIMIT 1
-    """, (collar_id,))
+    """,
+        (collar_id,),
+    )
 
     row = cur.fetchone()
     if not row:
         raise ValueError(f"Aucune métrique trouvée pour le collier {collar_id}")
 
-    return DogMetric.model_validate({
-        "recorded_at": row[0],
-        "anonymous_collar_id": row[1],
-        "bpm": row[2],
-        "respiratory_rate": row[3],
-        "temperature": row[4],
-        "activity": row[5],
-        "fsm_state": row[6],
-        "weight_kg": row[7],
-        "age_months": row[8],
-        "breed_size": row[9],
-    })
+    return DogMetric.model_validate(
+        {
+            "recorded_at": row[0],
+            "anonymous_collar_id": row[1],
+            "bpm": row[2],
+            "respiratory_rate": row[3],
+            "temperature": row[4],
+            "activity": row[5],
+            "fsm_state": row[6],
+            "weight_kg": row[7],
+            "age_months": row[8],
+            "breed_size": row[9],
+        }
+    )
+
 
 def main():
     """Affiche, pour deux colliers de test, la dernière mesure, la décision du garde-fou et l'action qui en découle."""
-    console.print("\n[bold cyan]Pawrise Care - Test de l'Intercepteur de Red Flags[/bold cyan]\n")
+    console.print(
+        "\n[bold cyan]Pawrise Care - Test de l'Intercepteur de Red Flags[/bold cyan]\n"
+    )
 
     try:
         with psycopg.connect(DSN) as conn, conn.cursor() as cur:
@@ -61,12 +70,16 @@ def main():
             table = Table(title="Résultats de l'analyse en temps réel (Handoff vs IA)")
 
             table.add_column("Collier ID", justify="left", style="cyan", no_wrap=True)
-            table.add_column("Métrique (Dernier point)", justify="left", style="magenta")
+            table.add_column(
+                "Métrique (Dernier point)", justify="left", style="magenta"
+            )
             table.add_column("Décision du Service", justify="center", style="bold")
             table.add_column("Action Conséquente", justify="left")
 
-            for metric, name in [(metric_a, "Collier A (Chien Sain)"), (metric_b, "Collier B (Cas d'urgence)")]:
-
+            for metric, name in [
+                (metric_a, "Collier A (Chien Sain)"),
+                (metric_b, "Collier B (Cas d'urgence)"),
+            ]:
                 decision = AnomalyDetector.evaluate(metric)
 
                 stats = f"BPM: {metric.bpm}, Resp: {metric.respiratory_rate}, Temp: {metric.temperature}°C"
@@ -76,15 +89,20 @@ def main():
                     action_str = "[red]Blocage IA -> Alerte SMS Vétérinaire[/red]"
                 else:
                     decision_str = "[bold green]NORMAL[/bold green]"
-                    action_str = "[green]Autorisé -> Routage vers AI_SERVICE_MOCK[/green]"
+                    action_str = (
+                        "[green]Autorisé -> Routage vers AI_SERVICE_MOCK[/green]"
+                    )
 
                 table.add_row(name, stats, decision_str, action_str)
 
             console.print(table)
-            console.print("\n[bold]Règle d'or respectée[/bold] : L'IA ne lira jamais les métriques du Collier B !\n")
+            console.print(
+                "\n[bold]Règle d'or respectée[/bold] : L'IA ne lira jamais les métriques du Collier B !\n"
+            )
 
     except Exception as e:  # noqa: BLE001
         console.print(f"[bold red]Erreur de connexion : {e}[/bold red]")
+
 
 if __name__ == "__main__":
     main()

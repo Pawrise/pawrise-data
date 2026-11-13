@@ -106,6 +106,7 @@ def critical_at_rest(device_id: str = COLLAR_C) -> dict[str, Any]:
 @dataclass(frozen=True)
 class Scenario:
     """Un scénario de test : nom, résultat attendu, générateur, collier utilisé et nombre de messages."""
+
     name: str
     description: str
     expected: str
@@ -117,19 +118,79 @@ class Scenario:
 SCENARIOS: tuple[Scenario, ...] = (
     Scenario("rest", "Chien au repos", "NORMAL", resting_dog, COLLAR_A, 3),
     Scenario("walk", "Chien en balade", "NORMAL", walking_dog, COLLAR_A, 2),
-    Scenario("escape", "Fugue (ESCAPE) sans détresse", "NORMAL", escaping_dog, COLLAR_B, 3),
-    Scenario("escape_critical", "Fugue (ESCAPE) avec détresse", "CRITICAL_HANDOFF", escaping_dog_critical, COLLAR_B, 2),
-    Scenario("critical_rest", "Urgence au repos", "CRITICAL_HANDOFF", critical_at_rest, COLLAR_C, 2),
-    Scenario("escape_medium", "Fugue sans détresse (medium)", "NORMAL", escaping_dog, COLLAR_MEDIUM, 2),
-    Scenario("escape_critical_medium", "Fugue critique (medium)", "CRITICAL_HANDOFF", escaping_dog_critical, COLLAR_MEDIUM, 2),
-    Scenario("critical_rest_medium", "Urgence au repos (medium)", "CRITICAL_HANDOFF", critical_at_rest, COLLAR_MEDIUM, 2),
-    Scenario("escape_large", "Fugue sans détresse (large)", "NORMAL", escaping_dog, COLLAR_LARGE, 2),
-    Scenario("escape_critical_large", "Fugue critique (large)", "CRITICAL_HANDOFF", escaping_dog_critical, COLLAR_LARGE, 2),
-    Scenario("critical_rest_large", "Urgence au repos (large)", "CRITICAL_HANDOFF", critical_at_rest, COLLAR_LARGE, 2),
+    Scenario(
+        "escape", "Fugue (ESCAPE) sans détresse", "NORMAL", escaping_dog, COLLAR_B, 3
+    ),
+    Scenario(
+        "escape_critical",
+        "Fugue (ESCAPE) avec détresse",
+        "CRITICAL_HANDOFF",
+        escaping_dog_critical,
+        COLLAR_B,
+        2,
+    ),
+    Scenario(
+        "critical_rest",
+        "Urgence au repos",
+        "CRITICAL_HANDOFF",
+        critical_at_rest,
+        COLLAR_C,
+        2,
+    ),
+    Scenario(
+        "escape_medium",
+        "Fugue sans détresse (medium)",
+        "NORMAL",
+        escaping_dog,
+        COLLAR_MEDIUM,
+        2,
+    ),
+    Scenario(
+        "escape_critical_medium",
+        "Fugue critique (medium)",
+        "CRITICAL_HANDOFF",
+        escaping_dog_critical,
+        COLLAR_MEDIUM,
+        2,
+    ),
+    Scenario(
+        "critical_rest_medium",
+        "Urgence au repos (medium)",
+        "CRITICAL_HANDOFF",
+        critical_at_rest,
+        COLLAR_MEDIUM,
+        2,
+    ),
+    Scenario(
+        "escape_large",
+        "Fugue sans détresse (large)",
+        "NORMAL",
+        escaping_dog,
+        COLLAR_LARGE,
+        2,
+    ),
+    Scenario(
+        "escape_critical_large",
+        "Fugue critique (large)",
+        "CRITICAL_HANDOFF",
+        escaping_dog_critical,
+        COLLAR_LARGE,
+        2,
+    ),
+    Scenario(
+        "critical_rest_large",
+        "Urgence au repos (large)",
+        "CRITICAL_HANDOFF",
+        critical_at_rest,
+        COLLAR_LARGE,
+        2,
+    ),
 )
 
 
-def generate_scenarios(names: list[str] | None = None) -> Iterator[tuple[Scenario, dict[str, Any]]]:
+def generate_scenarios(
+    names: list[str] | None = None,
+) -> Iterator[tuple[Scenario, dict[str, Any]]]:
     """Génère (scénario, payload) dans l'ordre, filtrable par nom de scénario."""
     for scenario in SCENARIOS:
         if names and scenario.name not in names:
