@@ -67,6 +67,27 @@ SELECT add_continuous_aggregate_policy(
 CREATE INDEX IF NOT EXISTS ix_dog_metrics_collar_time 
 ON dog_metrics (anonymous_collar_id, recorded_at DESC);
 
+-- 4b. Alertes critiques (Critical Handoff) : historique consultable en SQL par le module IA / le Backend.
+-- Les mesures critiques ne sont jamais écrites dans dog_metrics ; un doublon Kafka est ignoré (UNIQUE).
+CREATE TABLE IF NOT EXISTS critical_alerts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    recorded_at TIMESTAMPTZ NOT NULL,
+    anonymous_collar_id UUID NOT NULL,
+    bpm SMALLINT NOT NULL CHECK (bpm > 0),
+    respiratory_rate SMALLINT NOT NULL CHECK (respiratory_rate > 0),
+    temperature REAL NOT NULL,
+    activity TEXT NOT NULL CHECK (activity IN ('REST', 'WALKING', 'RUNNING', 'AGITATED')),
+    fsm_state TEXT NOT NULL,
+    weight_kg REAL NOT NULL CHECK (weight_kg > 0),
+    age_months INTEGER NOT NULL CHECK (age_months >= 0),
+    breed_size TEXT NOT NULL CHECK (breed_size IN ('small', 'medium', 'large')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (anonymous_collar_id, recorded_at)
+);
+
+CREATE INDEX IF NOT EXISTS ix_critical_alerts_collar_time
+ON critical_alerts (anonymous_collar_id, recorded_at DESC);
+
 -- 5. Table pour l'architecture RAG (Résultats / Insights générés)
 CREATE TABLE IF NOT EXISTS ai_insights (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

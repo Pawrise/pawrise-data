@@ -50,6 +50,30 @@ def test_critical_metric_publishes_alert_and_is_not_stored(consumer, make_metric
     assert payload["metric"]["anonymous_collar_id"] == str(metric.anonymous_collar_id)
 
 
+def test_critical_metric_is_saved_in_alerts_table(consumer, make_metric):
+    """Une urgence est aussi enregistrée dans la table des alertes, sans passer par le lot."""
+    metric = make_metric(respiratory_rate=100)
+    consumer._handle_message(_raw(metric))
+    consumer.db_repo.save_alert.assert_called_once_with(metric)
+    consumer.db_repo.save_metrics_batch.assert_not_called()
+
+
+def test_alert_db_failure_still_publishes_alert_and_goes_to_dlq(consumer, make_metric):
+    """Si la base est en panne, l'alerte Kafka part quand même et le message est gardé en DLQ."""
+    consumer.db_repo.save_alert.side_effect = RuntimeError("db down")
+    consumer._handle_message(_raw(make_metric(respiratory_rate=100)))
+    topics = [c.args[0] for c in consumer.producer.produce.call_args_list]
+    assert topics == [consumer.alerts_topic, consumer.dlq_topic]
+    dlq_call = consumer.producer.produce.call_args_list[1]
+    assert dlq_call.kwargs["headers"]["error"].startswith(b"alert_db_error")
+
+
+def test_normal_metric_does_not_save_alert(consumer, make_metric):
+    """Une mesure normale n'écrit rien dans la table des alertes."""
+    consumer._handle_message(_raw(make_metric()))
+    consumer.db_repo.save_alert.assert_not_called()
+
+
 @pytest.mark.parametrize("raw", [b"garbage", b"{}", b"\xff", json.dumps({"bpm": 5}).encode()])
 def test_malformed_message_goes_to_dlq(consumer, raw):
     """Un message illisible ou incomplet est envoyé dans la DLQ avec la raison."""

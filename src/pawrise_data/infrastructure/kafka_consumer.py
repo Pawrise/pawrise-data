@@ -100,6 +100,14 @@ class MetricsConsumer:
         )
         self.producer.poll(0)
 
+    def _persist_alert(self, metric: DogMetric, raw: bytes) -> None:
+        """Enregistre l'alerte en base (écriture immédiate). Si la base échoue, l'alerte Kafka est déjà partie : le message va en DLQ."""
+        try:
+            self.db_repo.save_alert(metric)
+        except Exception as e:  # noqa: BLE001
+            console.print(f"[red]❌ Alerte non enregistrée en base, message redirigé vers la DLQ : {e}[/red]")
+            self._send_to_dlq(raw, f"alert_db_error: {e}")
+
     def _flush_batch(self) -> None:
         """Persiste le lot courant, puis commit les offsets."""
         if self._batch:
@@ -174,7 +182,8 @@ class MetricsConsumer:
             console.print(f"[bold red blink]🚨 URGENCE DETECTEE (Collier {metric.anonymous_collar_id}) ![/bold red blink]")
             console.print(f"[red]   -> BPM: {metric.bpm} | Resp: {metric.respiratory_rate} | Temp: {metric.temperature}°C[/red]")
             self._publish_alert(metric)
-            console.print(f"[red]   -> ACTION : IA Bloquée, alerte publiée sur '{self.alerts_topic}'.[/red]\n")
+            self._persist_alert(metric, raw)
+            console.print(f"[red]   -> ACTION : IA Bloquée, alerte publiée sur '{self.alerts_topic}' et enregistrée en base.[/red]\n")
         else:
             if not self._batch:
                 self._batch_started_at = time.monotonic()

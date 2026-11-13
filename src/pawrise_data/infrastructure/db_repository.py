@@ -14,6 +14,15 @@ INSERT_METRIC_QUERY = """
     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 """
 
+INSERT_ALERT_QUERY = """
+    INSERT INTO critical_alerts (
+        recorded_at, anonymous_collar_id, bpm, respiratory_rate, temperature,
+        activity, fsm_state, weight_kg, age_months, breed_size
+    )
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    ON CONFLICT (anonymous_collar_id, recorded_at) DO NOTHING
+"""
+
 
 class DatabaseRepository:
     """
@@ -63,6 +72,14 @@ class DatabaseRepository:
             return
         with self.pool.connection() as conn, conn.cursor() as cur:
             cur.executemany(INSERT_METRIC_QUERY, [self._to_row(m) for m in metrics])
+
+    def save_alert(self, metric: DogMetric) -> None:
+        """
+        [Opération d'Écriture] - Enregistre une mesure critique dans `critical_alerts`.
+        Idempotent : une alerte rejouée par Kafka (même collier, même instant) est ignorée.
+        """
+        with self.pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(INSERT_ALERT_QUERY, self._to_row(metric))
 
     def get_history(self, collar_id: UUID, days: int = 14) -> list[DogMetric]:
         """

@@ -1,6 +1,6 @@
 # Pawrise Care - Data
 
-Ce dépôt regroupe l'ingestion, la validation, le garde-fou et le stockage des données du collier pour le projet Pawrise Care (EIP Epitech). Le périmètre est strictement Data Engineering : le pipeline s'arrête au stockage dans TimescaleDB/pgvector, qui servira de source de vérité à un futur module IA externe.
+Ce dépôt regroupe l'ingestion, la validation, le garde-fou et le stockage des données du collier pour le projet Pawrise Care (EIP Epitech). Le périmètre est strictement Data Engineering : la pipeline s'arrête au stockage dans TimescaleDB/pgvector, qui servira de source de vérité au module IA externe, porté par Yassine.
 
 ---
 
@@ -10,7 +10,7 @@ Le système repose sur trois règles simples :
 
 - **Anonymisation** : aucune donnée personnelle n'est manipulée ici, seulement un identifiant de collier unique (`anonymous_collar_id`).
 - **Garde-fou déterministe** : repérer les urgences vitales dès l'entrée pour bloquer l'IA si l'animal est en danger.
-- **IA en cage (futur module externe)** : l'IA n'a pas le droit de poser un diagnostic médical (Code rural, article L243-1). Son rôle se limitera à contextualiser la donnée et orienter le propriétaire. Aucune logique d'IA n'existe dans ce dépôt.
+- **IA en cage (module externe, porté par Yassine)** : l'IA n'a pas le droit de poser un diagnostic médical (Code rural, article L243-1). Son rôle se limitera à contextualiser la donnée et orienter le propriétaire. Yassine gère tout ce côté : la chatbox, la récupération des données et la réception des alertes critiques. Aucune logique d'IA n'existe dans ce dépôt.
 
 ---
 
@@ -124,22 +124,32 @@ Pydantic (`DogMetric`) rejette les valeurs corrompues (comme un BPM négatif) ou
 Puisqu'on ne stocke aucun nom de chien ni d'utilisateur (Anonymisation), comment ça marche côté client ?
 
 Le backend (Rust) reste la source des métadonnées du chien (poids, âge, taille). Le backend et notre pipeline Data ne se parlent pas directement, ils passent par Kafka et par la base. Le backend gère la vraie base utilisateurs (ex: Adam a un chien Rex qui porte le collier XYZ). 
-Quand l'application s'ouvre, le backend lit l'historique (dont les agrégats journaliers `daily_dog_metrics`) et écoute les alertes `critical_alerts_topic` du collier XYZ. Il récupère nos données, et c'est le backend qui se charge de recoller le nom "Rex" sur les graphiques avant de l'afficher.
+Quand l'application s'ouvre, le backend lit l'historique (dont les agrégats journaliers `daily_dog_metrics`) et écoute les alertes `critical_alerts_topic` (ou lit `critical_alerts`) du collier XYZ. Il récupère nos données, et c'est le backend qui se charge de recoller le nom "Rex" sur les graphiques avant de l'afficher.
+
+## Lien avec le module IA
+
+Le module IA est développé par Yassine, hors de ce dépôt. Il se branche sur nos sorties :
+
+- **Données** : il lit TimescaleDB (`dog_metrics`, agrégat `daily_dog_metrics`) pour contextualiser ses réponses dans la chatbox.
+- **Alertes critiques** : il les lit dans la table `critical_alerts` de TimescaleDB (requête SQL, historique conservé). Chaque alerte est aussi publiée sur `critical_alerts_topic` pour une réaction en temps réel. Une mesure critique ne passe jamais par l'IA : l'alerte part directement.
+- **Résultats** : il peut stocker ses analyses dans `ai_insights` (`context_summary`, `embedding`), prévue et vide pour l'instant.
+
+Les modalités exactes (compte de base en lecture seule, colonnes dont il a besoin) sont à fixer avec Yassine.
 
 ---
 
-## Fonctionnement du pipeline
+## Fonctionnement de la pipeline
 
 Le traitement s'organise comme une chaîne étape par étape :
 
-0. **Ingestion IoT** : `mqtt_ingestion.py` reçoit la télémétrie MQTT (Mosquitto), l'enrichit (poids, âge, taille, moyenne mobile du bpm), la valide et la publie sur `dog_metrics_topic`.
+0. **Ingestion IoT** : `mqtt_ingestion.py` reçoit la télémétrie MQTT (Mosquitto), l'enrichit (moyenne mobile du bpm, et profil du chien : poids, âge, taille, simulé pour l'instant par `mock_enrich()` en attendant la source réelle côté backend), la valide et la publie sur `dog_metrics_topic`.
 1. **Écoute** : le `MetricsConsumer` lit `dog_metrics_topic` en direct, par micro-lots, avec commit manuel des offsets.
 2. **Validation** : Pydantic vérifie que la donnée est bien formée et cohérente. Les messages invalides partent en DLQ (`dog_metrics_dlq`).
 3. **Garde-fou** : `AnomalyDetector.evaluate()` applique des seuils déterministes selon la taille du chien, son activité et son état (les seuils sont relevés en effort). Il est stateless : aucune requête BDD.
 4. **Aiguillage** :
-   - Critique : alerte publiée sur `critical_alerts_topic` (Critical Handoff).
+   - Critique : alerte publiée sur `critical_alerts_topic` (Critical Handoff), puis enregistrée dans la table `critical_alerts` (si l'écriture échoue, le message part en DLQ : l'alerte Kafka est déjà partie).
    - Normale : insertion en lot dans l'hypertable TimescaleDB `dog_metrics` (si l'insertion échoue, le lot part en DLQ).
-5. **Observabilité** : chaque flush de lot journalise le volume inséré, le temps d'exécution et le nombre de messages envoyés en DLQ.
+5. **Observabilité** : chaque flush de lot journalise le volume inséré, le temps d'exécution et le nombre de messages envoyés en DLQ, et alimente les métriques Prometheus visibles dans Grafana.
 
 ---
 
@@ -147,20 +157,21 @@ Le traitement s'organise comme une chaîne étape par étape :
 
 ### Ce qui est fait
 
-- **Infra** : Docker Compose avec PostgreSQL (TimescaleDB + pgvector), Kafka 3.7 (KRaft) et Mosquitto (MQTT).
-- **Ingestion MQTT → Kafka** avec enrichissement du payload et moyenne mobile du bpm.
-- **Validation** : modèle `DogMetric` (Pydantic v2) avec bornes strictes.
-- **Garde-fou V2** : seuils contextuels (taille de race), prise en compte de l'activité, de l'état du collier et du bpm lissé.
-- **Alertes** : Critical Handoff publié sur `critical_alerts_topic`.
-- **Consumer Kafka** : batching (taille/intervalle), commit manuel, DLQ, logs structurés.
-- **Stockage TimescaleDB** : hypertable, compression (7 jours), rétention (90 jours), agrégat continu journalier `daily_dog_metrics` avec sa policy de rafraîchissement.
-- **pgvector préparé** : table `ai_insights` (`embedding VECTOR(1536)`, index HNSW), schéma seulement, peuplée plus tard par le futur microservice IA.
-- **Tests et mocks** : `mock_generator`, `mock_producer`, `test_interceptor` et une suite de 77 tests (dont un smoke test e2e ignoré tant que la stack Docker n'est pas démarrée).
+- **Infra** : `docker compose up -d` lance PostgreSQL (TimescaleDB + pgvector), Kafka, Mosquitto (MQTT), Adminer, Prometheus et Grafana.
+- **Ingestion MQTT → Kafka** : `mqtt_ingestion.py` reçoit les mesures du collier, ajoute un bpm lissé (moyenne mobile) et le profil du chien (poids, âge, gabarit). Ce profil est pour l'instant simulé (`mock_enrich()`, valeurs aléatoires) : la source réelle sera le backend.
+- **Validation** : `DogMetric` (Pydantic v2) rejette les valeurs hors bornes.
+- **Garde-fou déterministe** : règles fixes, sans IA ni accès base. Les seuils varient selon le gabarit, l'activité et l'état du collier.
+- **Alertes** : une mesure critique est publiée sur `critical_alerts_topic` (Critical Handoff) et enregistrée dans la table `critical_alerts` (idempotent), que le module IA de Yassine lit en SQL.
+- **Consumer Kafka** : écrit en base par lots (50 messages ou 1 s), commit des offsets après sauvegarde. Les erreurs vont en DLQ (topic Kafka des messages rejetés).
+- **TimescaleDB** : hypertable (table partitionnée par période), compression à 7 jours, suppression à 90 jours, agrégat continu `daily_dog_metrics` (vue matérialisée moyenne/min/max par jour et par collier, validée sur stack réelle).
+- **Monitoring** : le consumer expose `:8000/metrics` (insérés, DLQ, alertes, durée de lot, lag Kafka = messages en attente). Prometheus les collecte, Grafana les affiche (dashboard « Pawrise - Santé la pipeline »).
+- **pgvector préparé** : table `ai_insights` (`VECTOR(1536)`, index HNSW), vide : réservée au module IA de Yassine.
+- **Tests et mocks** : `mock_generator`, `mock_producer`, `test_interceptor` et 82 tests (smoke test e2e ignoré sans stack Docker).
 
 ### Hors périmètre (décisions d'architecture)
 
 - `executemany()` conservé plutôt que `COPY` : le micro-batching avec DLQ exige une granularité transactionnelle fine.
-- Pas d'assistant IA / LangGraph / RAG dans ce dépôt : réservé à un futur microservice externe qui lira les tables.
+- Pas d'assistant IA / LangGraph / RAG dans ce dépôt : réservé au module IA externe de Yassine, qui lira les tables et les alertes.
 
 ---
 
@@ -187,11 +198,11 @@ Cette commande crée le `.venv` du projet et installe toutes les dépendances.
 docker compose up -d
 ```
 
-Lance PostgreSQL (`5432`), Kafka (`9092`) et Mosquitto (`1883`). Au premier démarrage, `docker/postgres/init.sql` crée les tables, l'hypertable, les politiques de compression et de rétention, et l'agrégat continu `daily_dog_metrics`.
+Lance PostgreSQL (`5432`), Kafka (`9092`), Mosquitto (`1883`), Adminer (`8080`), Prometheus (`9090`) et Grafana (`3000`). Au premier démarrage, `docker/postgres/init.sql` crée les tables (dont `critical_alerts`), l'hypertable, les politiques de compression et de rétention, et l'agrégat continu `daily_dog_metrics`. Sur une base déjà initialisée, le script ne rejoue pas : appliquer la table à la main avec `docker exec -i pawrise-postgres psql -U pawrise -d pawrise_care < docker/postgres/init.sql` (les `IF NOT EXISTS` le rendent sans risque) ou repartir de zéro avec `docker compose down -v`.
 
 La configuration par défaut convient en local. Pour la modifier, copier `.env.example` en `.env` et ajuster les variables.
 
-### 3. Lancer le pipeline
+### 3. Lancer la pipeline
 
 Chaque commande tourne en continu : l'ouvrir dans son propre terminal, dans cet ordre.
 

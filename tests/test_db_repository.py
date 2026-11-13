@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from pawrise_data.infrastructure.db_repository import (
+    INSERT_ALERT_QUERY,
     INSERT_METRIC_QUERY,
     DatabaseRepository,
 )
@@ -93,6 +94,22 @@ def test_save_metrics_batch_empty_is_noop(repo, pool_mock):
     """Un lot vide ne touche pas à la base."""
     repo.save_metrics_batch([])
     pool_mock.connection.assert_not_called()
+
+
+def test_save_alert_executes_idempotent_insert(repo, cursor, make_metric):
+    """Une alerte est écrite dans critical_alerts, avec un INSERT qui ignore les doublons."""
+    m = make_metric(respiratory_rate=100)
+    repo.save_alert(m)
+    cursor.execute.assert_called_once_with(INSERT_ALERT_QUERY, DatabaseRepository._to_row(m))
+    assert "critical_alerts" in INSERT_ALERT_QUERY
+    assert "ON CONFLICT" in INSERT_ALERT_QUERY
+
+
+def test_save_alert_propagates_errors(repo, cursor, make_metric):
+    """Une erreur de base remonte à l'appelant."""
+    cursor.execute.side_effect = RuntimeError("db down")
+    with pytest.raises(RuntimeError):
+        repo.save_alert(make_metric())
 
 
 def test_get_history_builds_metrics(repo, cursor, make_metric):
