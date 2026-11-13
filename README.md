@@ -164,9 +164,9 @@ Le traitement s'organise comme une chaîne étape par étape :
 - **Alertes** : une mesure critique est publiée sur `critical_alerts_topic` (Critical Handoff) et enregistrée dans la table `critical_alerts` (idempotent), que le module IA de Yassine lit en SQL.
 - **Consumer Kafka** : écrit en base par lots (50 messages ou 1 s), commit des offsets après sauvegarde. Les erreurs vont en DLQ (topic Kafka des messages rejetés).
 - **TimescaleDB** : hypertable (table partitionnée par période), compression à 7 jours, suppression à 90 jours, agrégat continu `daily_dog_metrics` (vue matérialisée moyenne/min/max par jour et par collier, validée sur stack réelle).
-- **Monitoring** : le consumer expose `:8000/metrics` (insérés, DLQ, alertes, durée de lot, lag Kafka = messages en attente). Prometheus les collecte, Grafana les affiche (dashboard « Pawrise - Santé la pipeline »).
+- **Monitoring** : le consumer expose `:8000/metrics` (insérés, DLQ, alertes, durée de lot, lag Kafka = messages en attente) et le pont MQTT `:8001/metrics` (reçus, rejetés, publiés, erreurs Kafka). Prometheus les collecte, Grafana les affiche (dashboards « Pawrise - Santé du pipeline » et « Pawrise - Flotte de colliers ») et déclenche 8 règles d'alerte.
 - **pgvector préparé** : table `ai_insights` (`VECTOR(1536)`, index HNSW), vide : réservée au module IA de Yassine.
-- **Tests et mocks** : `mock_generator`, `mock_producer`, `test_interceptor` et 82 tests (smoke test e2e ignoré sans stack Docker).
+- **Tests et mocks** : `mock_generator`, `mock_producer`, `test_interceptor` et 84 tests (smoke test e2e ignoré sans stack Docker).
 
 ### Hors périmètre (décisions d'architecture)
 
