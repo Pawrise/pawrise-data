@@ -1,0 +1,9 @@
+# Contrôle d'accès MQTT : chaque compte n'a que le droit dont il a besoin.
+
+# Pont Data (mqtt_ingestion.py) : lit la télémétrie, ne publie rien.
+user bridge
+topic read pawrise/+/telemetry
+
+# Colliers / simulateur IoT : publient la télémétrie, ne lisent rien.
+user iot
+topic write pawrise/+/telemetry

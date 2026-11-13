@@ -188,3 +188,26 @@ def test_bridge_metrics_count_delivery_errors(bridge):
     before = _counter(mqtt_ingestion.prom.KAFKA_DELIVERY_ERRORS)
     MqttToKafkaBridge._delivery_report("boom", None)
     assert _counter(mqtt_ingestion.prom.KAFKA_DELIVERY_ERRORS) == before + 1
+
+
+def test_bridge_sends_mqtt_credentials_when_configured():
+    """Le pont s'authentifie auprès de Mosquitto quand MQTT_USERNAME est défini."""
+    with (
+        patch.object(mqtt_ingestion, "Producer"),
+        patch.object(mqtt_ingestion.mqtt, "Client") as client,
+        patch.object(mqtt_ingestion, "MQTT_USERNAME", "bridge"),
+        patch.object(mqtt_ingestion, "MQTT_PASSWORD", "secret"),
+    ):
+        MqttToKafkaBridge()
+    client.return_value.username_pw_set.assert_called_once_with("bridge", "secret")
+
+
+def test_bridge_stays_anonymous_without_credentials():
+    """Sans MQTT_USERNAME, le pont ne tente aucune authentification."""
+    with (
+        patch.object(mqtt_ingestion, "Producer"),
+        patch.object(mqtt_ingestion.mqtt, "Client") as client,
+        patch.object(mqtt_ingestion, "MQTT_USERNAME", None),
+    ):
+        MqttToKafkaBridge()
+    client.return_value.username_pw_set.assert_not_called()

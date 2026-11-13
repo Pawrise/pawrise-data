@@ -23,6 +23,8 @@ console = Console()
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "pawrise/+/telemetry")
+MQTT_USERNAME = os.getenv("MQTT_USERNAME")
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 KAFKA_BROKER_URL = os.getenv("KAFKA_BROKER_URL", "localhost:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "dog_metrics_topic")
 BPM_WINDOW_SIZE = int(os.getenv("BPM_WINDOW_SIZE", "5"))
@@ -84,6 +86,8 @@ class MqttToKafkaBridge:
         """Prépare le producteur Kafka, le client MQTT et la mémoire des moyennes mobiles (une fenêtre par collier)."""
         self._producer = Producer({"bootstrap.servers": KAFKA_BROKER_URL})
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        if MQTT_USERNAME:
+            self._client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
         self._client.on_connect = self._on_connect
         self._client.on_message = self._on_message
         self._stop = threading.Event()

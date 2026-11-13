@@ -20,7 +20,7 @@ Vue d'ensemble du flux, du capteur jusqu'au stockage et aux alertes. Le service 
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1060 580" width="100%" role="img" aria-labelledby="arch-title arch-desc" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
 <title id="arch-title">Architecture Pawrise Care : du capteur IoT à TimescaleDB</title>
-<desc id="arch-desc">Le capteur IoT envoie en MQTT au backend Rust, qui enrichit les données et publie sur Kafka. Le service Data Python consomme dog_metrics_topic, valide avec Pydantic, applique l'AnomalyDetector puis écrit dans TimescaleDB ou publie sur critical_alerts_topic.</desc>
+<desc id="arch-desc">Le capteur IoT publie en MQTT sur Mosquitto. Le pont mqtt_ingestion.py (pôle Data) valide, enrichit puis publie sur Kafka dog_metrics_topic. Le MetricsConsumer valide avec Pydantic (échecs en DLQ) et applique l'AnomalyDetector : les mesures normales vont dans TimescaleDB, les urgences sur critical_alerts_topic et dans la table critical_alerts. Prometheus et Grafana supervisent le pipeline.</desc>
 <defs>
 <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#475569"/></marker>
 <marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D64545"/></marker>
@@ -42,16 +42,16 @@ Vue d'ensemble du flux, du capteur jusqu'au stockage et aux alertes. Le service 
 <text x="160" y="278" text-anchor="middle" font-size="11" fill="#475569">UUID v4 · aucune donnée nominative</text>
 <!-- ZONE 2 -->
 <rect x="350" y="20" width="280" height="540" rx="12" fill="#FFF4EA" stroke="#E0782B" stroke-width="1.5"/>
-<text x="490" y="48" text-anchor="middle" font-size="14" font-weight="700" fill="#9A4A0F">ZONE 2 · Backend Rust</text>
-<text x="490" y="66" text-anchor="middle" font-size="12" fill="#9A6A42">Ingestion, enrichissement, publication</text>
+<text x="490" y="48" text-anchor="middle" font-size="14" font-weight="700" fill="#9A4A0F">ZONE 2 · Ingestion (Data)</text>
+<text x="490" y="66" text-anchor="middle" font-size="12" fill="#9A6A42">Mosquitto, pont MQTT, Kafka</text>
 <rect x="370" y="100" width="240" height="60" rx="8" fill="#FFFFFF" stroke="#E0782B" stroke-width="1.5"/>
-<text x="490" y="126" text-anchor="middle" font-size="14" font-weight="700" fill="#1F2937">Ingestion MQTT</text>
-<text x="490" y="145" text-anchor="middle" font-size="12" fill="#475569">Réception des mesures</text>
+<text x="490" y="126" text-anchor="middle" font-size="14" font-weight="700" fill="#1F2937">Mosquitto (MQTT)</text>
+<text x="490" y="145" text-anchor="middle" font-size="11" fill="#475569" font-family="ui-monospace, Menlo, Consolas, monospace">pawrise/+/telemetry</text>
 <rect x="370" y="190" width="240" height="95" rx="8" fill="#FFFFFF" stroke="#E0782B" stroke-width="1.5"/>
-<text x="490" y="214" text-anchor="middle" font-size="14" font-weight="700" fill="#1F2937">Enrichissement</text>
-<text x="490" y="236" text-anchor="middle" font-size="11" fill="#475569" font-family="ui-monospace, Menlo, Consolas, monospace">weight_kg · age_months</text>
-<text x="490" y="254" text-anchor="middle" font-size="11" fill="#475569" font-family="ui-monospace, Menlo, Consolas, monospace">breed_size</text>
-<text x="490" y="272" text-anchor="middle" font-size="11" fill="#475569">poids · âge · gabarit</text>
+<text x="490" y="214" text-anchor="middle" font-size="14" font-weight="700" fill="#1F2937">Pont MQTT → Kafka</text>
+<text x="490" y="236" text-anchor="middle" font-size="11" fill="#475569" font-family="ui-monospace, Menlo, Consolas, monospace">mqtt_ingestion.py</text>
+<text x="490" y="254" text-anchor="middle" font-size="11" fill="#475569">Pydantic · bpm lissé</text>
+<text x="490" y="272" text-anchor="middle" font-size="11" fill="#475569">profil chien simulé · backend à venir</text>
 <rect x="365" y="315" width="250" height="160" rx="10" fill="#FFFFFF" stroke="#475569" stroke-width="1.5"/>
 <text x="490" y="336" text-anchor="middle" font-size="12" font-weight="700" fill="#1F2937">Apache Kafka</text>
 <rect x="378" y="348" width="224" height="42" rx="8" fill="#FFF7ED" stroke="#E0782B" stroke-width="1.5"/>
@@ -67,9 +67,9 @@ Vue d'ensemble du flux, du capteur jusqu'au stockage et aux alertes. Le service 
 <rect x="700" y="90" width="320" height="50" rx="8" fill="#FFFFFF" stroke="#2E9E6B" stroke-width="1.5"/>
 <text x="860" y="112" text-anchor="middle" font-size="14" font-weight="700" fill="#1F2937">MetricsConsumer</text>
 <text x="860" y="129" text-anchor="middle" font-size="11" fill="#475569" font-family="ui-monospace, Menlo, Consolas, monospace">consomme dog_metrics_topic</text>
-<rect x="700" y="165" width="320" height="50" rx="8" fill="#FFFFFF" stroke="#2E9E6B" stroke-width="1.5"/>
-<text x="860" y="187" text-anchor="middle" font-size="14" font-weight="700" fill="#1F2937">Validateur Pydantic</text>
-<text x="860" y="204" text-anchor="middle" font-size="11" fill="#475569" font-family="ui-monospace, Menlo, Consolas, monospace">DogMetric.model_validate()</text>
+<rect x="700" y="165" width="200" height="50" rx="8" fill="#FFFFFF" stroke="#2E9E6B" stroke-width="1.5"/>
+<text x="800" y="187" text-anchor="middle" font-size="14" font-weight="700" fill="#1F2937">Validateur Pydantic</text>
+<text x="800" y="204" text-anchor="middle" font-size="11" fill="#475569" font-family="ui-monospace, Menlo, Consolas, monospace">DogMetric.model_validate()</text>
 <rect x="700" y="240" width="320" height="70" rx="8" fill="#FFFFFF" stroke="#2E9E6B" stroke-width="2"/>
 <text x="860" y="263" text-anchor="middle" font-size="14" font-weight="700" fill="#1F2937">AnomalyDetector</text>
 <text x="860" y="282" text-anchor="middle" font-size="11" fill="#475569" font-family="ui-monospace, Menlo, Consolas, monospace">evaluate()</text>
@@ -81,25 +81,31 @@ Vue d'ensemble du flux, du capteur jusqu'au stockage et aux alertes. Le service 
 <rect x="865" y="350" width="155" height="70" rx="8" fill="#FDECEC" stroke="#D64545" stroke-width="1.5"/>
 <text x="942" y="374" text-anchor="middle" font-size="13" font-weight="700" fill="#1F2937">Critical Handoff</text>
 <text x="942" y="394" text-anchor="middle" font-size="10.5" fill="#475569" font-family="ui-monospace, Menlo, Consolas, monospace">critical_alerts_topic</text>
-<rect x="700" y="480" width="320" height="50" rx="8" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 4"/>
-<text x="860" y="502" text-anchor="middle" font-size="11" font-weight="700" fill="#64748B" font-family="ui-monospace, Menlo, Consolas, monospace">dog_telemetry_topic</text>
-<text x="860" y="518" text-anchor="middle" font-size="11" fill="#64748B">ignoré par la Data</text>
+<text x="942" y="410" text-anchor="middle" font-size="10.5" fill="#475569" font-family="ui-monospace, Menlo, Consolas, monospace">+ table critical_alerts</text>
+<rect x="915" y="165" width="105" height="50" rx="8" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="967" y="187" text-anchor="middle" font-size="12" font-weight="700" fill="#64748B">DLQ</text>
+<text x="967" y="204" text-anchor="middle" font-size="9.5" fill="#64748B" font-family="ui-monospace, Menlo, Consolas, monospace">dog_metrics_dlq</text>
+<rect x="700" y="440" width="320" height="50" rx="8" fill="#FFFFFF" stroke="#2E9E6B" stroke-width="1.2"/>
+<text x="860" y="460" text-anchor="middle" font-size="12" font-weight="700" fill="#1F2937">Prometheus + Grafana</text>
+<text x="860" y="477" text-anchor="middle" font-size="11" fill="#475569">métriques consumer et pont · 8 alertes</text>
+<rect x="700" y="505" width="320" height="42" rx="8" fill="#FFFFFF" stroke="#94A3B8" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="860" y="522" text-anchor="middle" font-size="11" font-weight="700" fill="#64748B" font-family="ui-monospace, Menlo, Consolas, monospace">dog_telemetry_topic</text>
+<text x="860" y="538" text-anchor="middle" font-size="11" fill="#64748B">ignoré par la Data</text>
 <!-- FLUX -->
+<path d="M900,190 H915" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arr-grey)"/>
 <path d="M280,130 H370" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
 <text x="325" y="122" text-anchor="middle" font-size="11" font-weight="700" fill="#475569">MQTT</text>
 <path d="M490,160 V190" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
 <path d="M490,285 V315" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
 <path d="M602,369 H645 V115 H700" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
-<path d="M602,427 H665 V505 H700" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arr-grey)"/>
-<path d="M860,140 V165" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
-<path d="M860,215 V240" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
+<path d="M602,427 H665 V526 H700" fill="none" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arr-grey)"/>
+<path d="M800,140 V165" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
+<path d="M800,215 V240" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#arr)"/>
 <path d="M860,310 V330 H777 V350" fill="none" stroke="#2E9E6B" stroke-width="1.8" marker-end="url(#arr-green)"/>
 <path d="M860,330 H942 V350" fill="none" stroke="#D64545" stroke-width="1.8" marker-end="url(#arr-red)"/>
 <text x="815" y="324" text-anchor="middle" font-size="10.5" font-weight="700" fill="#17694A">NORMAL</text>
 <text x="905" y="324" text-anchor="middle" font-size="10.5" font-weight="700" fill="#B83232">URGENCE</text>
 </svg>
-
-Version autonome du schéma : [`docs/architecture.svg`](docs/architecture.svg).
 
 ---
 
@@ -128,7 +134,7 @@ Quand l'application s'ouvre, le backend lit l'historique (dont les agrégats jou
 
 ## Lien avec le module IA
 
-Le module IA est développé par Yassine, hors de ce dépôt. Il se branche sur nos sorties :
+Le module IA se branche sur nos sorties :
 
 - **Données** : il lit TimescaleDB (`dog_metrics`, agrégat `daily_dog_metrics`) pour contextualiser ses réponses dans la chatbox.
 - **Alertes critiques** : il les lit dans la table `critical_alerts` de TimescaleDB (requête SQL, historique conservé). Chaque alerte est aussi publiée sur `critical_alerts_topic` pour une réaction en temps réel. Une mesure critique ne passe jamais par l'IA : l'alerte part directement.
@@ -154,6 +160,26 @@ Le traitement s'organise comme une chaîne étape par étape :
 ---
 
 ## État du projet
+
+### Avancement par follow-up
+
+**Follow-up 1 (septembre à 9 octobre) : MVP**
+- Infra Docker : Kafka, PostgreSQL avec TimescaleDB et pgvector.
+- Validation des mesures avec Pydantic.
+- Consumer Kafka (un message à la fois) et premier garde-fou (tachycardie, forte fièvre, détresse respiratoire).
+- Sauvegarde de l'historique en base et scripts de simulation.
+- Pipeline CI avec notification Discord.
+
+**Follow-up 2 (depuis le 9 octobre) : pipeline complet et supervision**
+- **Ingestion** : Mosquitto et pont `mqtt_ingestion.py` (validation, bpm lissé, profil du chien simulé en attendant le backend).
+- **Garde-fou V2** : seuils selon le poids, l'âge et la taille, prise en compte de l'activité et de la moyenne du BPM.
+- **Alertes** : Critical Handoff sur `critical_alerts_topic` et dans la table `critical_alerts`, lue en SQL par le module IA.
+- **Tenue de charge** : consumer par lots avec pool de connexions, commit manuel et DLQ.
+- **TimescaleDB** : compression à 7 jours, suppression à 90 jours, agrégat journalier `daily_dog_metrics`, table `ai_insights` préparée.
+- **Supervision** : métriques Prometheus (consumer et pont), 2 dashboards Grafana et 8 règles d'alerte, pensés pour surveiller une flotte sans regarder chaque collier.
+- **Fiabilité** : volume Postgres corrigé pour conserver les données, 84 tests, schéma d'architecture mis à jour.
+
+**Prochaine étape** : brancher la vraie source du profil chien (backend), configurer les notifications d'alerte, faire un test de charge et fixer avec Yassine ses accès à la base.
 
 ### Ce qui est fait
 
@@ -283,6 +309,31 @@ Règles d'alerte provisionnées (`docker/grafana/provisioning/alerting/rules.yml
 | Rafale d'alertes critiques | plus de 20 alertes critiques en 5 min |
 
 Les règles s'affichent dans Grafana (Alerting). Pour être prévenu automatiquement (Discord, Slack, email), ajouter un point de contact dans Grafana > Alerting > Contact points puis l'associer à la politique de notification par défaut. Les seuils sont des valeurs de départ à ajuster avec le volume réel de la flotte.
+
+### Sécurité du broker MQTT (local et pré-prod)
+
+Mosquitto refuse les connexions anonymes (`allow_anonymous false`) et applique des droits par compte (`docker/mosquitto/acl`) :
+
+| Compte | Qui l'utilise | Droit |
+|---|---|---|
+| `bridge` | le pont `mqtt_ingestion.py` (Data) | lire `pawrise/+/telemetry`, rien d'autre |
+| `iot` | le script de l'équipe IoT / `mock_producer` | publier sur `pawrise/+/telemetry`, ne peut rien lire |
+
+Un compte volé ne permet donc ni d'espionner les mesures (`iot`), ni d'injecter de fausses mesures (`bridge`). Les mots de passe sont hachés dans `docker/mosquitto/passwd` (ignoré par git). Avant le premier `docker compose up -d`, le générer :
+
+```bash
+./docker/mosquitto/gen_passwd.sh
+```
+
+Les mots de passe sont lus dans le fichier `.env` (ignoré par git) : `MQTT_BRIDGE_PASSWORD` et `MQTT_IOT_PASSWORD`. Sans `.env`, le script utilise des valeurs de développement (`bridge-dev`, `iot-dev`). Les programmes lisent leur compte dans l'environnement :
+
+```bash
+set -a; source .env; set +a
+MQTT_USERNAME=bridge MQTT_PASSWORD="$MQTT_BRIDGE_PASSWORD" uv run python -m pawrise_data.infrastructure.mqtt_ingestion
+MQTT_USERNAME=iot MQTT_PASSWORD="$MQTT_IOT_PASSWORD" uv run python -m pawrise_data.scripts.mock_producer
+```
+
+Reste à faire avant une vraie pré-prod exposée : chiffrer avec TLS (port 8883 et certificat), ne plus publier le port 1883, sécuriser Kafka (`SASL_SSL`) et remplacer les mots de passe par défaut de la base et de Grafana.
 
 ### Tests
 

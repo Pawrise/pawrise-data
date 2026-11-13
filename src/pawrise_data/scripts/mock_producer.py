@@ -19,6 +19,8 @@ from pawrise_data.scripts.mock_generator import SCENARIOS, generate_scenarios
 
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_USERNAME = os.getenv("MQTT_USERNAME")
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
 
 console = Console()
 
@@ -38,6 +40,8 @@ def main() -> None:
     console.print(f"[bold cyan]Pawrise Care[/bold cyan] - Mock Producer vers MQTT ({MQTT_HOST}:{MQTT_PORT})")
 
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+    if MQTT_USERNAME:
+        client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
     try:
         client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
     except OSError as exc:
